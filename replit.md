@@ -1,12 +1,22 @@
-# Indian Stock Market Analysis App
+# StockScope - Advanced Indian Stock Market Analysis App
 
 ## Overview
 
-This is a Streamlit-based web application for analyzing Indian stock market data. The app provides interactive charts, technical analysis, and data visualization for Indian stocks listed on NSE (National Stock Exchange) and BSE (Bombay Stock Exchange). It uses Yahoo Finance as the data source and Plotly for creating interactive visualizations.
+StockScope is a modern, feature-rich Streamlit web application for comprehensive Indian stock market analysis. The app provides intelligent stock search with autocomplete, interactive charts, technical analysis, and advanced data visualization for Indian stocks listed on NSE and BSE. Enhanced with a contemporary dark theme and intuitive user interface following current design trends.
+
+## Recent Changes (Latest Update)
+
+✅ **Modern UI Redesign** - Complete visual overhaul with contemporary styling  
+✅ **Smart Search System** - Intelligent autocomplete with 70+ Indian stocks database  
+✅ **Sector-based Browsing** - Browse stocks by business sectors  
+✅ **Enhanced Metrics** - Additional performance indicators and analytics  
+✅ **Improved Data Table** - Enhanced historical data explorer with column formatting  
+✅ **Welcome Screen Redesign** - Modern landing page with feature showcase  
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Design preference: Modern, attractive UI following current trends with smart autocomplete functionality.
 
 ## System Architecture
 

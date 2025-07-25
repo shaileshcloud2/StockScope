@@ -6,21 +6,124 @@ from datetime import datetime, timedelta
 import yfinance as yf
 from utils.stock_data import StockDataFetcher
 from utils.chart_utils import create_price_chart, create_volume_chart
+from utils.stock_database import search_stocks, get_popular_stocks, get_all_sectors, get_stocks_by_sector
 import io
 
 # Page configuration
 st.set_page_config(
-    page_title="Indian Stock Market Analysis",
-    page_icon="📈",
+    page_title="StockScope - Indian Market Analysis",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Custom CSS for modern UI
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(90deg, #00D4AA 0%, #00A3FF 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-size: 3rem;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    .subtitle {
+        text-align: center;
+        color: #8B949E;
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stock-card {
+        background: linear-gradient(135deg, #1E1E2E 0%, #262738 100%);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border: 1px solid #00D4AA20;
+        box-shadow: 0 8px 32px rgba(0, 212, 170, 0.1);
+    }
+    
+    .metric-card {
+        background: rgba(0, 212, 170, 0.1);
+        border-radius: 10px;
+        padding: 1rem;
+        text-align: center;
+        border: 1px solid rgba(0, 212, 170, 0.2);
+    }
+    
+    .search-container {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(0, 212, 170, 0.2);
+    }
+    
+    .suggestion-item {
+        background: rgba(0, 212, 170, 0.1);
+        border-radius: 8px;
+        padding: 0.8rem;
+        margin: 0.3rem 0;
+        border: 1px solid rgba(0, 212, 170, 0.2);
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .suggestion-item:hover {
+        background: rgba(0, 212, 170, 0.2);
+        border-color: #00D4AA;
+    }
+    
+    .sector-tag {
+        background: linear-gradient(90deg, #00D4AA, #00A3FF);
+        color: white;
+        padding: 0.2rem 0.6rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    
+    .popular-stock-btn {
+        background: linear-gradient(135deg, #00D4AA 0%, #00A3FF 100%);
+        border-radius: 10px;
+        padding: 0.8rem;
+        text-align: center;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+        border: none;
+        width: 100%;
+    }
+    
+    .popular-stock-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 212, 170, 0.3);
+    }
+    
+    .feature-highlight {
+        background: linear-gradient(135deg, rgba(0, 212, 170, 0.1) 0%, rgba(0, 163, 255, 0.1) 100%);
+        border-left: 4px solid #00D4AA;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Initialize session state
 if 'stock_data' not in st.session_state:
     st.session_state.stock_data = None
 if 'selected_symbol' not in st.session_state:
     st.session_state.selected_symbol = ""
+if 'search_query' not in st.session_state:
+    st.session_state.search_query = ""
+if 'show_suggestions' not in st.session_state:
+    st.session_state.show_suggestions = False
 
 # Initialize data fetcher
 @st.cache_resource
@@ -29,84 +132,85 @@ def get_data_fetcher():
 
 data_fetcher = get_data_fetcher()
 
-# Main title and description
-st.title("🇮🇳 Indian Stock Market Analysis")
-st.markdown("---")
+# Modern header
+st.markdown('<h1 class="main-header">📊 StockScope</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Advanced Indian Stock Market Analysis Platform</p>', unsafe_allow_html=True)
 
-# Sidebar for stock selection and filters
+# Enhanced Sidebar with Modern Design
 with st.sidebar:
-    st.header("Stock Selection")
+    st.markdown("### 🔍 Smart Stock Search")
     
-    # Initialize variables
-    symbol_input = ""
-    exchange = "NSE (Default)"
-    company_name = ""
-    full_symbol = None
-    
-    # Popular stocks mapping for demo
-    popular_stocks = {
-        "Reliance Industries": "RELIANCE.NS",
-        "Tata Consultancy Services": "TCS.NS",
-        "HDFC Bank": "HDFCBANK.NS",
-        "Infosys": "INFY.NS",
-        "ICICI Bank": "ICICIBANK.NS",
-        "State Bank of India": "SBIN.NS",
-        "Bharti Airtel": "BHARTIARTL.NS",
-        "ITC": "ITC.NS",
-        "Kotak Mahindra Bank": "KOTAKBANK.NS",
-        "Hindustan Unilever": "HINDUNILVR.NS"
-    }
-    
-    # Stock input methods
-    input_method = st.radio(
-        "Choose input method:",
-        ["Search by Symbol", "Search by Company Name"]
+    # Smart search with autocomplete
+    search_query = st.text_input(
+        "Search stocks...",
+        value=st.session_state.search_query,
+        placeholder="Type symbol or company name (e.g., RELIANCE, TCS, Infosys)",
+        help="Start typing to see suggestions",
+        key="search_input"
     )
     
-    if input_method == "Search by Symbol":
-        # Stock symbol input
-        symbol_input = st.text_input(
-            "Enter Stock Symbol:",
-            placeholder="e.g., RELIANCE, TCS, HDFCBANK",
-            help="Enter symbol without exchange suffix. The app will automatically try NSE first, then BSE."
-        ).upper().strip()
-        
-        # Exchange selection
-        exchange = st.selectbox(
-            "Preferred Exchange:",
-            ["NSE (Default)", "BSE", "Both (NSE first)"],
-            help="NSE symbols end with .NS, BSE symbols end with .BO"
-        )
-        
-        if symbol_input:
-            if exchange == "NSE (Default)":
-                full_symbol = f"{symbol_input}.NS"
-            elif exchange == "BSE":
-                full_symbol = f"{symbol_input}.BO"
-            else:  # Both
-                full_symbol = symbol_input  # Will be handled in fetch function
-    else:
-        # Company name search (simplified - in real app would have autocomplete)
-        company_name = st.text_input(
-            "Enter Company Name:",
-            placeholder="e.g., Reliance Industries, Tata Consultancy Services"
-        )
-        
-        if company_name:
-            # Simple matching
-            matches = [stock for stock in popular_stocks.keys() 
-                      if company_name.lower() in stock.lower()]
-            if matches:
-                selected_company = st.selectbox("Select from matches:", matches)
-                full_symbol = popular_stocks[selected_company]
-            else:
-                st.warning("Company not found in database. Try symbol search instead.")
-                full_symbol = None
-        else:
-            full_symbol = None
+    # Initialize variables
+    selected_stock = None
+    full_symbol = None
     
-    # Time period selection
-    st.subheader("Analysis Period")
+    # Show suggestions when user types
+    if search_query and len(search_query) >= 1:
+        suggestions = search_stocks(search_query, limit=8)
+        
+        if suggestions:
+            st.markdown("**📋 Suggestions:**")
+            
+            for i, stock in enumerate(suggestions):
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    if st.button(
+                        f"**{stock['symbol']}** - {stock['name'][:30]}{'...' if len(stock['name']) > 30 else ''}",
+                        key=f"suggestion_{i}",
+                        help=f"{stock['name']} | {stock['sector']} | {stock['exchange']}"
+                    ):
+                        selected_stock = stock
+                        full_symbol = stock['full_symbol']
+                        st.session_state.search_query = stock['symbol']
+                        st.rerun()
+                
+                with col2:
+                    st.markdown(f'<span class="sector-tag">{stock["sector"]}</span>', unsafe_allow_html=True)
+        else:
+            st.info("🔍 No matches found. Try a different search term.")
+    
+    # Sector-based browsing
+    st.markdown("---")
+    st.markdown("### 🏢 Browse by Sector")
+    
+    sectors = get_all_sectors()
+    selected_sector = st.selectbox(
+        "Choose sector:",
+        ["All Sectors"] + sectors,
+        help="Filter stocks by business sector"
+    )
+    
+    if selected_sector != "All Sectors":
+        sector_stocks = get_stocks_by_sector(selected_sector)
+        
+        if sector_stocks:
+            st.markdown(f"**{selected_sector} Stocks:**")
+            
+            for stock in sector_stocks[:6]:  # Show first 6
+                if st.button(
+                    f"{stock['symbol']} - {stock['name'][:25]}{'...' if len(stock['name']) > 25 else ''}",
+                    key=f"sector_{stock['symbol']}",
+                    help=f"{stock['name']} | {stock['exchange']}"
+                ):
+                    selected_stock = stock
+                    full_symbol = stock['full_symbol']
+                    st.session_state.search_query = stock['symbol']
+                    st.rerun()
+    
+    # Time period selection with modern styling
+    st.markdown("---")
+    st.markdown("### ⏱️ Analysis Period")
+    
     period_options = {
         "1 Month": "1mo",
         "3 Months": "3mo", 
@@ -117,119 +221,333 @@ with st.sidebar:
     }
     
     selected_period = st.selectbox(
-        "Select Time Period:",
+        "Select time range:",
         list(period_options.keys()),
-        index=2  # Default to 6 months
+        index=3,  # Default to 1 year
+        help="Choose the historical data period for analysis"
     )
     
     period = period_options[selected_period]
     
-    # Fetch data button
-    if st.button("📊 Analyze Stock", type="primary"):
-        if full_symbol:
-            with st.spinner("Fetching stock data..."):
+    # Enhanced analyze button
+    st.markdown("---")
+    
+    # Use the selected stock or try to parse the search query
+    if not selected_stock and search_query:
+        # Try to find exact match
+        exact_matches = search_stocks(search_query, limit=1)
+        if exact_matches and exact_matches[0]['symbol'].lower() == search_query.lower():
+            selected_stock = exact_matches[0]
+            full_symbol = exact_matches[0]['full_symbol']
+    
+    analyze_disabled = not (selected_stock or full_symbol or search_query)
+    
+    if st.button(
+        "🚀 Analyze Stock", 
+        type="primary", 
+        disabled=analyze_disabled,
+        use_container_width=True,
+        help="Click to fetch and analyze stock data"
+    ):
+        # Determine what to analyze
+        symbol_to_analyze = full_symbol
+        
+        if not symbol_to_analyze and search_query:
+            # Try to construct symbol from search query
+            clean_query = search_query.upper().strip()
+            if not clean_query.endswith(('.NS', '.BO')):
+                symbol_to_analyze = f"{clean_query}.NS"  # Default to NSE
+            else:
+                symbol_to_analyze = clean_query
+        
+        if symbol_to_analyze:
+            with st.spinner("🔄 Fetching market data..."):
                 try:
-                    stock_data = data_fetcher.fetch_stock_data(full_symbol, period)
+                    stock_data = data_fetcher.fetch_stock_data(symbol_to_analyze, period)
                     if stock_data is not None:
                         st.session_state.stock_data = stock_data
-                        st.session_state.selected_symbol = full_symbol
-                        st.success(f"✅ Data loaded for {full_symbol}")
+                        st.session_state.selected_symbol = symbol_to_analyze
+                        st.success(f"✅ Analysis ready for {symbol_to_analyze}")
+                        st.balloons()  # Celebratory animation
                     else:
-                        st.error("❌ Failed to fetch stock data. Please check the symbol and try again.")
+                        st.error("❌ Unable to fetch data. Please verify the stock symbol.")
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
         else:
-            st.error("❌ Please enter a stock symbol or company name.")
+            st.error("❌ Please select a stock or enter a valid symbol.")
+    
+    # Quick access to popular stocks
+    st.markdown("---")
+    st.markdown("### ⭐ Popular Stocks")
+    
+    popular_list = get_popular_stocks(6)
+    
+    # Display popular stocks in a grid
+    for i in range(0, len(popular_list), 2):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if i < len(popular_list):
+                stock = popular_list[i]
+                if st.button(
+                    f"**{stock['symbol']}**",
+                    key=f"popular_{i}",
+                    help=f"{stock['name']} | {stock['sector']}",
+                    use_container_width=True
+                ):
+                    st.session_state.search_query = stock['symbol']
+                    selected_stock = stock
+                    full_symbol = stock['full_symbol']
+                    
+                    with st.spinner(f"Loading {stock['symbol']}..."):
+                        try:
+                            stock_data = data_fetcher.fetch_stock_data(full_symbol, period)
+                            if stock_data is not None:
+                                st.session_state.stock_data = stock_data
+                                st.session_state.selected_symbol = full_symbol
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+        
+        with col2:
+            if i + 1 < len(popular_list):
+                stock = popular_list[i + 1]
+                if st.button(
+                    f"**{stock['symbol']}**",
+                    key=f"popular_{i+1}",
+                    help=f"{stock['name']} | {stock['sector']}",
+                    use_container_width=True
+                ):
+                    st.session_state.search_query = stock['symbol']
+                    selected_stock = stock
+                    full_symbol = stock['full_symbol']
+                    
+                    with st.spinner(f"Loading {stock['symbol']}..."):
+                        try:
+                            stock_data = data_fetcher.fetch_stock_data(full_symbol, period)
+                            if stock_data is not None:
+                                st.session_state.stock_data = stock_data
+                                st.session_state.selected_symbol = full_symbol
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+    
+    # App info
+    st.markdown("---")
+    st.markdown("""
+    <div class="feature-highlight">
+        <strong>🎯 Features:</strong><br>
+        • Smart autocomplete search<br>
+        • Real-time market data<br>
+        • Interactive charts<br>
+        • Sector-wise browsing<br>
+        • CSV data export
+    </div>
+    """, unsafe_allow_html=True)
 
-# Main content area
+# Enhanced Main Content Area
 if st.session_state.stock_data is not None:
     stock_data = st.session_state.stock_data
     symbol = st.session_state.selected_symbol
     
-    # Stock header information
-    col1, col2, col3, col4 = st.columns(4)
+    # Get stock info from database for better display
+    symbol_clean = symbol.replace('.NS', '').replace('.BO', '')
+    stock_info = None
     
+    # Try to get additional info from our database
+    from utils.stock_database import INDIAN_STOCKS
+    if symbol_clean in INDIAN_STOCKS:
+        stock_info = INDIAN_STOCKS[symbol_clean]
+    
+    # Modern stock header with company info
+    st.markdown(f"""
+    <div class="stock-card">
+        <h2 style="margin-bottom: 0.5rem; color: #00D4AA;">
+            {symbol} {f"- {stock_info['name']}" if stock_info else ""}
+        </h2>
+        {f'<p style="color: #8B949E; margin-bottom: 1rem;"><strong>Sector:</strong> {stock_info["sector"]} | <strong>Exchange:</strong> {stock_info["exchange"]}</p>' if stock_info else ''}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Enhanced metrics with modern cards
     current_price = stock_data['Close'].iloc[-1]
     prev_price = stock_data['Close'].iloc[-2] if len(stock_data) > 1 else current_price
     price_change = current_price - prev_price
     price_change_pct = (price_change / prev_price) * 100 if prev_price != 0 else 0
     
+    # Calculate additional metrics
+    high_52w = stock_data['High'].max()
+    low_52w = stock_data['Low'].min()
+    avg_volume = stock_data['Volume'].mean()
+    volume_change = ((stock_data['Volume'].iloc[-1] / stock_data['Volume'].iloc[-2] - 1) * 100) if len(stock_data) > 1 else 0
+    
+    # Price performance metrics
+    period_return = ((current_price / stock_data['Close'].iloc[0]) - 1) * 100
+    volatility = stock_data['Close'].pct_change().std() * 100
+    
+    # Display metrics in enhanced grid
+    col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
+        delta_color = "normal" if price_change >= 0 else "inverse"
         st.metric(
-            label=f"**{symbol}**",
+            label="💰 Current Price",
             value=f"₹{current_price:.2f}",
-            delta=f"{price_change:.2f} ({price_change_pct:.2f}%)"
+            delta=f"{price_change:.2f} ({price_change_pct:.2f}%)",
+            delta_color=delta_color
         )
     
     with col2:
+        volume_delta_color = "normal" if volume_change >= 0 else "inverse"
         st.metric(
-            label="Volume",
+            label="📊 Volume",
             value=f"{stock_data['Volume'].iloc[-1]:,.0f}",
-            delta=f"{((stock_data['Volume'].iloc[-1] / stock_data['Volume'].iloc[-2] - 1) * 100):.1f}%" if len(stock_data) > 1 else None
+            delta=f"{volume_change:.1f}%" if len(stock_data) > 1 else None,
+            delta_color=volume_delta_color
         )
     
     with col3:
-        high_52w = stock_data['High'].max()
-        low_52w = stock_data['Low'].min()
         st.metric(
-            label="52W High",
-            value=f"₹{high_52w:.2f}"
+            label="📈 52W High",
+            value=f"₹{high_52w:.2f}",
+            help=f"Distance from high: {((current_price/high_52w - 1) * 100):.1f}%"
         )
     
     with col4:
         st.metric(
-            label="52W Low", 
-            value=f"₹{low_52w:.2f}"
+            label="📉 52W Low",
+            value=f"₹{low_52w:.2f}",
+            help=f"Distance from low: {((current_price/low_52w - 1) * 100):.1f}%"
+        )
+    
+    # Additional metrics row
+    st.markdown("### 📊 Performance Metrics")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        period_color = "normal" if period_return >= 0 else "inverse"
+        st.metric(
+            label=f"🎯 Period Return",
+            value=f"{period_return:.2f}%",
+            delta_color=period_color,
+            help=f"Total return for the selected time period"
+        )
+    
+    with col2:
+        st.metric(
+            label="📋 Avg Volume",
+            value=f"{avg_volume:,.0f}",
+            help="Average daily trading volume"
+        )
+    
+    with col3:
+        st.metric(
+            label="⚡ Volatility",
+            value=f"{volatility:.2f}%",
+            help="Daily price volatility (standard deviation)"
+        )
+    
+    with col4:
+        market_cap_display = "N/A"
+        if stock_info and 'market_cap' in stock_info:
+            market_cap_display = stock_info.get('market_cap', 'N/A')
+        
+        st.metric(
+            label="🏢 Market Cap",
+            value=market_cap_display,
+            help="Market capitalization"
         )
     
     st.markdown("---")
     
-    # Charts section
-    st.subheader("📈 Price Charts")
+    # Enhanced Charts section with modern tabs
+    st.markdown("### 📈 Interactive Charts")
     
-    chart_tab1, chart_tab2 = st.tabs(["Price Chart", "Volume Chart"])
+    # Create tabs with icons
+    chart_tab1, chart_tab2, chart_tab3 = st.tabs([
+        "🕯️ Candlestick Chart", 
+        "📊 Volume Analysis", 
+        "📈 Price Trend"
+    ])
     
     with chart_tab1:
-        price_chart = create_price_chart(stock_data, symbol)
+        st.markdown("**Candlestick chart with moving averages and volume**")
+        price_chart = create_price_chart(stock_data, symbol, chart_type="candlestick")
         st.plotly_chart(price_chart, use_container_width=True)
     
     with chart_tab2:
+        st.markdown("**Volume analysis with moving average**")
         volume_chart = create_volume_chart(stock_data, symbol)
         st.plotly_chart(volume_chart, use_container_width=True)
     
+    with chart_tab3:
+        st.markdown("**Simple price trend line**")
+        line_chart = create_price_chart(stock_data, symbol, chart_type="line")
+        st.plotly_chart(line_chart, use_container_width=True)
+    
     st.markdown("---")
     
-    # Data table section
-    st.subheader("📊 Historical Data")
+    # Enhanced Data table section
+    st.markdown("### 📊 Historical Data Explorer")
     
-    # Display options
-    col1, col2, col3 = st.columns(3)
+    # Modern display options with better layout
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         show_rows = st.selectbox(
-            "Rows to display:", 
+            "📋 Rows to show:", 
             [10, 25, 50, 100, "All"],
-            index=1
+            index=1,
+            help="Number of rows to display in the table"
         )
     
     with col2:
         sort_column = st.selectbox(
-            "Sort by:",
-            ["Date", "Close", "Volume", "High", "Low"],
-            index=0
+            "🔤 Sort by:",
+            ["Date", "Close", "Volume", "High", "Low", "Open"],
+            index=0,
+            help="Choose column to sort by"
         )
     
     with col3:
         sort_order = st.selectbox(
-            "Sort order:",
+            "📈 Order:",
             ["Descending", "Ascending"],
-            index=0
+            index=0,
+            help="Sort order"
         )
     
-    # Prepare data for display
+    with col4:
+        # Add period filter
+        st.markdown("**📥 Download Data**")
+        
+        # Prepare CSV data
+        csv_data = stock_data.copy()
+        csv_data = csv_data.reset_index()
+        
+        # Create CSV buffer
+        csv_buffer = io.StringIO()
+        csv_data.to_csv(csv_buffer, index=False)
+        csv_string = csv_buffer.getvalue()
+        
+        # Modern download button
+        st.download_button(
+            label="💾 Download CSV",
+            data=csv_string,
+            file_name=f"{symbol}_{selected_period.replace(' ', '_')}_data.csv",
+            mime="text/csv",
+            help="Download complete historical data",
+            use_container_width=True
+        )
+    
+    # Prepare and display enhanced data table
     display_data = stock_data.copy()
     display_data = display_data.reset_index()
     display_data['Date'] = display_data['Date'].dt.strftime('%Y-%m-%d')
+    
+    # Add daily change columns
+    display_data['Daily Change (₹)'] = display_data['Close'] - display_data['Open']
+    display_data['Daily Change (%)'] = ((display_data['Close'] - display_data['Open']) / display_data['Open'] * 100).round(2)
     
     # Round numeric columns
     numeric_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close']
@@ -247,114 +565,201 @@ if st.session_state.stock_data is not None:
     if show_rows != "All":
         display_data = display_data.head(show_rows)
     
-    # Display table
+    # Reorder columns for better presentation
+    column_order = ['Date', 'Open', 'High', 'Low', 'Close', 'Daily Change (₹)', 'Daily Change (%)', 'Volume']
+    if 'Adj Close' in display_data.columns:
+        column_order.insert(-2, 'Adj Close')
+    
+    display_data = display_data[column_order]
+    
+    # Display enhanced table with styling
     st.dataframe(
         display_data,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        column_config={
+            "Date": st.column_config.DateColumn("📅 Date"),
+            "Open": st.column_config.NumberColumn("🔓 Open", format="₹%.2f"),
+            "High": st.column_config.NumberColumn("📈 High", format="₹%.2f"),
+            "Low": st.column_config.NumberColumn("📉 Low", format="₹%.2f"),
+            "Close": st.column_config.NumberColumn("🔒 Close", format="₹%.2f"),
+            "Daily Change (₹)": st.column_config.NumberColumn("💰 Change (₹)", format="₹%.2f"),
+            "Daily Change (%)": st.column_config.NumberColumn("📊 Change (%)", format="%.2f%%"),
+            "Volume": st.column_config.NumberColumn("📊 Volume", format="%d"),
+            "Adj Close": st.column_config.NumberColumn("⚖️ Adj Close", format="₹%.2f") if 'Adj Close' in display_data.columns else None
+        }
     )
-    
-    # Download section
-    st.subheader("💾 Download Data")
-    
-    # Prepare CSV data
-    csv_data = stock_data.copy()
-    csv_data = csv_data.reset_index()
-    
-    # Create CSV buffer
-    csv_buffer = io.StringIO()
-    csv_data.to_csv(csv_buffer, index=False)
-    csv_string = csv_buffer.getvalue()
-    
-    # Download button
-    st.download_button(
-        label="📥 Download CSV",
-        data=csv_string,
-        file_name=f"{symbol}_{selected_period}_data.csv",
-        mime="text/csv",
-        help="Download historical stock data as CSV file"
-    )
-    
-    # Additional metrics
-    st.markdown("---")
-    st.subheader("📊 Key Statistics")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        avg_volume = stock_data['Volume'].mean()
-        st.metric("Avg Volume", f"{avg_volume:,.0f}")
-    
-    with col2:
-        volatility = stock_data['Close'].pct_change().std() * 100
-        st.metric("Volatility", f"{volatility:.2f}%")
-    
-    with col3:
-        returns = ((current_price / stock_data['Close'].iloc[0]) - 1) * 100
-        st.metric(f"{selected_period} Return", f"{returns:.2f}%")
-    
-    with col4:
-        avg_price = stock_data['Close'].mean()
-        st.metric("Avg Price", f"₹{avg_price:.2f}")
 
 else:
-    # Welcome screen
+    # Modern Welcome Screen
     st.markdown("""
-    ## Welcome to Indian Stock Market Analysis! 🎯
+    <div class="feature-highlight">
+        <h2 style="margin-bottom: 1rem; color: #00D4AA;">🎯 Welcome to StockScope!</h2>
+        <p style="font-size: 1.1rem; margin-bottom: 1.5rem;">
+            Your advanced platform for Indian stock market analysis with real-time data and intelligent insights.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    ### How to use this app:
-    1. **Select Input Method**: Choose to search by stock symbol or company name
-    2. **Enter Stock Details**: Input the stock symbol (e.g., RELIANCE, TCS) or company name
-    3. **Choose Exchange**: Select NSE (default) or BSE exchange
-    4. **Select Time Period**: Choose analysis period from 1 month to 5 years
-    5. **Click Analyze**: Get comprehensive stock analysis with charts and data
+    # Feature showcase
+    col1, col2, col3 = st.columns(3)
     
-    ### Features:
-    - 📈 **Interactive Charts**: Price and volume charts with zoom and hover
-    - 📊 **Data Tables**: Sortable historical data with customizable views
-    - 💾 **CSV Export**: Download stock data for external analysis
-    - 🎯 **Key Metrics**: Current price, volume, 52-week high/low, returns
-    - 🌙 **Dark Theme**: Easy on the eyes for extended analysis
+    with col1:
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #00D4AA;">🔍 Smart Search</h3>
+            <p>Type any stock symbol or company name to get intelligent suggestions with sector information.</p>
+            <ul style="margin-top: 1rem;">
+                <li>Auto-complete functionality</li>
+                <li>Symbol & name search</li>
+                <li>Sector-based browsing</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
     
-    ### Supported Exchanges:
-    - **NSE (National Stock Exchange)**: Primary Indian stock exchange
-    - **BSE (Bombay Stock Exchange)**: Oldest stock exchange in Asia
+    with col2:
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #00A3FF;">📈 Advanced Charts</h3>
+            <p>Interactive charts with multiple visualization options and technical indicators.</p>
+            <ul style="margin-top: 1rem;">
+                <li>Candlestick patterns</li>
+                <li>Volume analysis</li>
+                <li>Moving averages</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
     
-    **Get started by entering a stock symbol in the sidebar!** 👈
-    """)
+    with col3:
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #FF6B6B;">📊 Rich Analytics</h3>
+            <p>Comprehensive data analysis with key performance metrics and downloadable reports.</p>
+            <ul style="margin-top: 1rem;">
+                <li>Performance metrics</li>
+                <li>Historical data</li>
+                <li>CSV export</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Popular stocks quick access
-    st.subheader("🔥 Popular Indian Stocks")
+    st.markdown("---")
     
-    popular_stocks_info = {
-        "RELIANCE.NS": "Reliance Industries - Oil & Gas",
-        "TCS.NS": "Tata Consultancy Services - IT Services", 
-        "HDFCBANK.NS": "HDFC Bank - Banking",
-        "INFY.NS": "Infosys - IT Services",
-        "ICICIBANK.NS": "ICICI Bank - Banking",
-        "SBIN.NS": "State Bank of India - Banking"
-    }
+    # Quick start guide
+    st.markdown("### 🚀 Quick Start Guide")
     
-    cols = st.columns(3)
-    for i, (symbol, description) in enumerate(popular_stocks_info.items()):
-        with cols[i % 3]:
-            if st.button(f"📊 {symbol.replace('.NS', '')}", key=f"popular_{i}"):
-                st.session_state.selected_symbol = symbol
-                with st.spinner(f"Loading {symbol}..."):
-                    try:
-                        stock_data = data_fetcher.fetch_stock_data(symbol, "6mo")
-                        if stock_data is not None:
-                            st.session_state.stock_data = stock_data
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Error loading {symbol}: {str(e)}")
-            st.caption(description)
+    step_col1, step_col2, step_col3, step_col4 = st.columns(4)
+    
+    with step_col1:
+        st.markdown("""
+        **Step 1️⃣**  
+        🔍 **Search Stock**  
+        Type symbol or company name in the sidebar
+        """)
+    
+    with step_col2:
+        st.markdown("""
+        **Step 2️⃣**  
+        ⏱️ **Select Period**  
+        Choose your analysis timeframe
+        """)
+    
+    with step_col3:
+        st.markdown("""
+        **Step 3️⃣**  
+        🚀 **Analyze**  
+        Click the analyze button to fetch data
+        """)
+    
+    with step_col4:
+        st.markdown("""
+        **Step 4️⃣**  
+        📊 **Explore**  
+        View charts, metrics, and download data
+        """)
+    
+    st.markdown("---")
+    
+    # Trending stocks showcase
+    st.markdown("### ⭐ Popular Stocks to Explore")
+    
+    # Get popular stocks from database
+    popular_list = get_popular_stocks(12)
+    
+    # Display in a modern grid layout
+    for i in range(0, len(popular_list), 4):
+        cols = st.columns(4)
+        
+        for j, col in enumerate(cols):
+            if i + j < len(popular_list):
+                stock = popular_list[i + j]
+                
+                with col:
+                    if st.button(
+                        f"**{stock['symbol']}**",
+                        key=f"welcome_popular_{i+j}",
+                        help=f"{stock['name']} | {stock['sector']}",
+                        use_container_width=True
+                    ):
+                        st.session_state.search_query = stock['symbol']
+                        
+                        with st.spinner(f"Loading {stock['symbol']} data..."):
+                            try:
+                                stock_data = data_fetcher.fetch_stock_data(stock['full_symbol'], "1y")
+                                if stock_data is not None:
+                                    st.session_state.stock_data = stock_data
+                                    st.session_state.selected_symbol = stock['full_symbol']
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error loading {stock['symbol']}: {str(e)}")
+                    
+                    # Show company info
+                    st.caption(f"{stock['name'][:25]}{'...' if len(stock['name']) > 25 else ''}")
+                    st.markdown(f'<span class="sector-tag">{stock["sector"]}</span>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Market info section
+    st.markdown("### 🏢 Supported Exchanges")
+    
+    exchange_col1, exchange_col2 = st.columns(2)
+    
+    with exchange_col1:
+        st.markdown("""
+        <div class="feature-highlight">
+            <h4 style="color: #00D4AA;">NSE (National Stock Exchange)</h4>
+            <p>India's leading stock exchange with largest market capitalization and trading volume.</p>
+            <p><strong>Symbol Format:</strong> SYMBOL.NS</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with exchange_col2:
+        st.markdown("""
+        <div class="feature-highlight">
+            <h4 style="color: #00A3FF;">BSE (Bombay Stock Exchange)</h4>
+            <p>Asia's oldest stock exchange established in 1875, featuring over 5,000 listed companies.</p>
+            <p><strong>Symbol Format:</strong> SYMBOL.BO</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-# Footer
+# Modern Footer
 st.markdown("---")
 st.markdown("""
-<div style='text-align: center; color: #666; padding: 20px;'>
-    <p>📊 Indian Stock Market Analysis App | Data provided by Yahoo Finance</p>
-    <p><small>⚠️ This is for educational purposes only. Not financial advice.</small></p>
+<div style='text-align: center; color: #8B949E; padding: 2rem; margin-top: 3rem;'>
+    <div style='background: linear-gradient(135deg, rgba(0, 212, 170, 0.1) 0%, rgba(0, 163, 255, 0.1) 100%); 
+                border-radius: 15px; padding: 1.5rem; margin-bottom: 1rem;'>
+        <h4 style='color: #00D4AA; margin-bottom: 0.5rem;'>📊 StockScope - Advanced Market Analysis</h4>
+        <p style='margin-bottom: 0.5rem;'>Powered by Yahoo Finance API | Built with Streamlit & Plotly</p>
+        <p style='font-size: 0.9rem; color: #666;'>
+            <strong>Features:</strong> Smart Search • Interactive Charts • Real-time Data • Sector Analysis
+        </p>
+    </div>
+    <p style='font-size: 0.85rem; color: #8B949E;'>
+        ⚠️ <strong>Disclaimer:</strong> This application is for educational and informational purposes only. 
+        Not intended as investment advice. Please consult financial professionals before making investment decisions.
+    </p>
+    <p style='font-size: 0.8rem; color: #666; margin-top: 1rem;'>
+        © 2024 StockScope | NSE & BSE Market Data
+    </p>
 </div>
 """, unsafe_allow_html=True)
