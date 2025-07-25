@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 from utils.stock_data import StockDataFetcher
 from utils.chart_utils import create_price_chart, create_volume_chart
 from utils.excel_analyzer import ExcelAnalyzer
+from utils.live_data_fetcher import LiveDataFetcher, refresh_live_data
 import numpy as np
 from datetime import datetime, timedelta
 
@@ -22,6 +23,7 @@ class WatchlistPages:
         self.analyzer = ExcelAnalyzer(excel_file_path)
         self.analysis = self.analyzer.analyze_file()
         self.stock_fetcher = st.session_state.get('stock_fetcher')
+        self.live_fetcher = LiveDataFetcher()
         
     def render_watchlist_overview(self):
         """Render overview page showing all available watchlists"""
@@ -92,11 +94,31 @@ class WatchlistPages:
             st.error(f"Error reading sheet: {sheet_info['error']}")
             return
         
-        # Get sheet data
+        # Get sheet data and enhance with live data
         df = self.analyzer.get_sheet_data(sheet_name)
         if df.empty:
             st.warning("No data found in this sheet")
             return
+        
+        # Add refresh button and auto-refresh functionality
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            if st.button("🔄 Refresh Live Data", key=f"refresh_{sheet_name}"):
+                with st.spinner("Fetching live data..."):
+                    df = refresh_live_data(df, sheet_name)
+                    st.success("Live data updated!")
+                    st.rerun()
+        
+        with col2:
+            auto_refresh = st.checkbox("Auto-refresh (5min)", key=f"auto_refresh_{sheet_name}")
+            if auto_refresh:
+                st.empty()  # Placeholder for auto-refresh logic
+        
+        with col3:
+            st.markdown("📊 **Live market data integration enabled**")
+        
+        # Enhance data with live information
+        df = self.live_fetcher.enhance_excel_data(df, sheet_name)
         
         st.title(f"📈 {sheet_name} Watchlist")
         
@@ -106,20 +128,37 @@ class WatchlistPages:
                 del st.session_state.selected_watchlist
             st.rerun()
         
-        # Sheet statistics
-        col1, col2, col3 = st.columns(3)
+        # Enhanced statistics with live data
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Stocks", len(df))
+            identified_stocks = len(df[df['Stock_Name'].notna()]) if 'Stock_Name' in df.columns else 0
+            st.metric("Total Stocks", len(df), delta=f"{identified_stocks} identified")
+        
         with col2:
-            price_cols = [col for col in df.columns if 'price' in col.lower() or 'close' in col.lower()]
-            if price_cols:
-                avg_price = df[price_cols[0]].dropna().mean()
-                st.metric("Avg Price", f"₹{avg_price:.2f}" if not pd.isna(avg_price) else "N/A")
+            if 'Live_Price' in df.columns and not df['Live_Price'].isna().all():
+                avg_live_price = df['Live_Price'].dropna().mean()
+                st.metric("Avg Live Price", f"₹{avg_live_price:.2f}" if not pd.isna(avg_live_price) else "N/A")
+            else:
+                price_cols = [col for col in df.columns if 'price' in col.lower() or 'close' in col.lower()]
+                if price_cols:
+                    avg_price = df[price_cols[0]].dropna().mean()
+                    st.metric("Avg Price", f"₹{avg_price:.2f}" if not pd.isna(avg_price) else "N/A")
+        
         with col3:
-            suggestion_col = [col for col in df.columns if 'suggestion' in col.lower()]
-            if suggestion_col:
-                buy_signals = len(df[df[suggestion_col[0]].str.contains('BUY', na=False)])
-                st.metric("Buy Signals", buy_signals)
+            if 'Live_Change_Percent' in df.columns:
+                positive_movers = len(df[df['Live_Change_Percent'] > 0])
+                negative_movers = len(df[df['Live_Change_Percent'] < 0])
+                st.metric("Gainers", positive_movers, delta=f"{negative_movers} losers")
+            else:
+                suggestion_col = [col for col in df.columns if 'suggestion' in col.lower()]
+                if suggestion_col:
+                    buy_signals = len(df[df[suggestion_col[0]].str.contains('BUY', na=False)])
+                    st.metric("Buy Signals", buy_signals)
+        
+        with col4:
+            if 'Last_Updated' in df.columns:
+                last_update = df['Last_Updated'].dropna().iloc[-1] if not df['Last_Updated'].dropna().empty else "Never"
+                st.metric("Last Updated", last_update)
         
         st.markdown("---")
         
@@ -139,56 +178,133 @@ class WatchlistPages:
             self._render_quick_analysis(df, sheet_name)
     
     def _render_data_table(self, df: pd.DataFrame, sheet_name: str):
-        """Render interactive data table"""
+        """Render interactive data table with live data"""
         st.subheader(f"📊 {sheet_name} Data Table")
         
-        # Filters
-        col1, col2 = st.columns(2)
+        # Enhanced filters
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Create a copy for filtering
+        filtered_df = df.copy()
         
         with col1:
             # Suggestion filter if available
             suggestion_col = [col for col in df.columns if 'suggestion' in col.lower()]
-            if suggestion_col:
+            if suggestion_col and not df[suggestion_col[0]].dropna().empty:
                 suggestions = df[suggestion_col[0]].dropna().unique()
                 selected_suggestions = st.multiselect(
-                    "Filter by Suggestion",
+                    "🎯 Filter by Suggestion",
                     options=suggestions,
                     default=[]
                 )
                 if selected_suggestions:
-                    mask = df[suggestion_col[0]].isin(selected_suggestions)
-                    df = df.loc[mask].copy()
+                    mask = filtered_df[suggestion_col[0]].isin(selected_suggestions)
+                    filtered_df = filtered_df.loc[mask].copy()
         
         with col2:
             # Market cap filter if available
             mcap_col = [col for col in df.columns if 'cap' in col.lower() and col != 'M Cap']
-            if mcap_col:
+            if mcap_col and not df[mcap_col[0]].dropna().empty:
                 mcap_categories = df[mcap_col[0]].dropna().unique()
                 selected_mcap = st.multiselect(
-                    "Filter by Market Cap",
+                    "💰 Filter by Market Cap",
                     options=mcap_categories,
                     default=[]
                 )
                 if selected_mcap:
-                    mask = df[mcap_col[0]].isin(selected_mcap)
-                    df = df.loc[mask].copy()
+                    mask = filtered_df[mcap_col[0]].isin(selected_mcap)
+                    filtered_df = filtered_df.loc[mask].copy()
         
-        # Display table
+        with col3:
+            # Industry filter if available
+            industry_col = [col for col in df.columns if 'industry' in col.lower()]
+            if industry_col and not df[industry_col[0]].dropna().empty:
+                industries = df[industry_col[0]].dropna().unique()
+                selected_industries = st.multiselect(
+                    "🏭 Filter by Industry",
+                    options=industries[:10],  # Limit to first 10 for UI
+                    default=[]
+                )
+                if selected_industries:
+                    mask = filtered_df[industry_col[0]].isin(selected_industries)
+                    filtered_df = filtered_df.loc[mask].copy()
+        
+        with col4:
+            # Stock identification filter
+            if 'Stock_Name' in df.columns:
+                show_identified_only = st.checkbox("✅ Show identified stocks only")
+                if show_identified_only:
+                    mask = filtered_df['Stock_Name'].notna()
+                    filtered_df = filtered_df.loc[mask].copy()
+        
+        # Prepare display dataframe with better column ordering
+        display_columns = []
+        
+        # Prioritize important columns
+        priority_columns = ['Stock_Name', 'Identified_Symbol', 'Live_Price', 'Live_Change', 'Live_Change_Percent']
+        for col in priority_columns:
+            if col in filtered_df.columns:
+                display_columns.append(col)
+        
+        # Add original columns
+        original_important = ['Stock Name', 'Price', 'P Close', 'Suggestion', 'M Cap', 'Industry', 'D Change (%)']
+        for col in original_important:
+            if col in filtered_df.columns and col not in display_columns:
+                display_columns.append(col)
+        
+        # Add remaining columns
+        for col in filtered_df.columns:
+            if col not in display_columns and not col.startswith('Unnamed'):
+                display_columns.append(col)
+        
+        # Filter to existing columns
+        display_columns = [col for col in display_columns if col in filtered_df.columns]
+        display_df = filtered_df[display_columns]
+        
+        st.markdown(f"**Showing {len(display_df)} of {len(df)} stocks**")
+        
+        # Enhanced display with better formatting
+        column_config = {}
+        
+        if 'Stock_Name' in display_df.columns:
+            column_config['Stock_Name'] = st.column_config.TextColumn("🏢 Company Name", width="large")
+        if 'Identified_Symbol' in display_df.columns:
+            column_config['Identified_Symbol'] = st.column_config.TextColumn("📊 Symbol", width="small")
+        if 'Live_Price' in display_df.columns:
+            column_config['Live_Price'] = st.column_config.NumberColumn("💰 Live Price", format="₹%.2f")
+        if 'Live_Change' in display_df.columns:
+            column_config['Live_Change'] = st.column_config.NumberColumn("📈 Change", format="₹%.2f")
+        if 'Live_Change_Percent' in display_df.columns:
+            column_config['Live_Change_Percent'] = st.column_config.NumberColumn("📊 Change %", format="%.2f%%")
+        if 'Price' in display_df.columns:
+            column_config['Price'] = st.column_config.NumberColumn("💵 Price", format="₹%.2f")
+        
+        # Display enhanced table
         st.dataframe(
-            df,
+            display_df,
             use_container_width=True,
-            height=400
+            height=400,
+            column_config=column_config,
+            hide_index=True
         )
         
-        # Export functionality
-        if st.button("📥 Export Filtered Data"):
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name=f"{sheet_name}_filtered_data.csv",
-                mime="text/csv"
-            )
+        # Export functionality with enhanced data
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📥 Export Filtered Data", key=f"export_{sheet_name}"):
+                csv = display_df.to_csv(index=False)
+                st.download_button(
+                    label="Download CSV",
+                    data=csv,
+                    file_name=f"{sheet_name}_enhanced_data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    key=f"download_{sheet_name}"
+                )
+        
+        with col2:
+            if 'Stock_Name' in display_df.columns:
+                identified_count = len(display_df[display_df['Stock_Name'].notna()])
+                st.info(f"📊 {identified_count} stocks identified with live data")
     
     def _render_performance_analysis(self, df: pd.DataFrame, sheet_name: str):
         """Render performance analysis charts"""
@@ -248,6 +364,53 @@ class WatchlistPages:
                     font_color='white'
                 )
                 st.plotly_chart(fig, use_container_width=True)
+        
+        # Enhanced live data analysis
+        if 'Live_Price' in df.columns and not df['Live_Price'].isna().all():
+            st.subheader("📊 Live Market Analysis")
+            
+            # Live vs Excel price comparison
+            price_comparison_df = df[['Live_Price', price_col]].dropna()
+            if not price_comparison_df.empty:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig = px.scatter(
+                        price_comparison_df,
+                        x=price_col,
+                        y='Live_Price',
+                        title="Live Price vs Excel Price",
+                        labels={price_col: "Excel Price", 'Live_Price': "Live Price"}
+                    )
+                    fig.add_trace(go.Scatter(
+                        x=[price_comparison_df[price_col].min(), price_comparison_df[price_col].max()],
+                        y=[price_comparison_df[price_col].min(), price_comparison_df[price_col].max()],
+                        mode='lines',
+                        name='Perfect Match',
+                        line=dict(dash='dash', color='red')
+                    ))
+                    fig.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='white'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    if 'Live_Change_Percent' in df.columns:
+                        live_changes = df['Live_Change_Percent'].dropna()
+                        fig = px.histogram(
+                            live_changes,
+                            title="Live Price Change Distribution",
+                            nbins=20,
+                            color_discrete_sequence=['#00d4ff']
+                        )
+                        fig.update_layout(
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            font_color='white'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
         
         # Sector/Industry analysis if available
         sector_col = [col for col in df.columns if 'sector' in col.lower() or 'industry' in col.lower()]
