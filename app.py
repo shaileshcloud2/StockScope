@@ -7,6 +7,7 @@ import yfinance as yf
 from utils.stock_data import StockDataFetcher
 from utils.chart_utils import create_price_chart, create_volume_chart
 from utils.stock_database import search_stocks, get_popular_stocks, get_all_sectors, get_stocks_by_sector
+from utils.watchlist_pages import render_watchlist_navigation
 import io
 
 # Page configuration
@@ -124,7 +125,8 @@ if 'search_query' not in st.session_state:
     st.session_state.search_query = ""
 if 'show_suggestions' not in st.session_state:
     st.session_state.show_suggestions = False
-
+if 'page_mode' not in st.session_state:
+    st.session_state.page_mode = 'main'
 # Initialize data fetcher
 @st.cache_resource
 def get_data_fetcher():
@@ -132,7 +134,24 @@ def get_data_fetcher():
 
 data_fetcher = get_data_fetcher()
 
-# Modern header
+if 'stock_fetcher' not in st.session_state:
+    st.session_state.stock_fetcher = data_fetcher
+
+# Check if we should render watchlist pages
+if st.session_state.get('page_mode') == 'watchlist':
+    # Add back to main button in sidebar
+    with st.sidebar:
+        if st.button("← Back to Main Analysis", use_container_width=True):
+            st.session_state.page_mode = 'main'
+            if 'selected_watchlist' in st.session_state:
+                del st.session_state.selected_watchlist
+            st.rerun()
+    
+    # Render watchlist pages
+    render_watchlist_navigation()
+    st.stop()
+
+# Modern header for main app
 st.markdown('<h1 class="main-header">📊 StockScope</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Advanced Indian Stock Market Analysis Platform</p>', unsafe_allow_html=True)
 
@@ -277,6 +296,14 @@ with st.sidebar:
             st.error("❌ Please select a stock or enter a valid symbol.")
     
     # Quick access to popular stocks
+    # Add Excel Watchlist navigation
+    st.markdown("---")
+    st.markdown("### 📊 Excel Watchlists")
+    
+    if st.button("📋 View Excel Watchlists", use_container_width=True, help="Analyze uploaded Excel file data"):
+        st.session_state.page_mode = 'watchlist'
+        st.rerun()
+    
     st.markdown("---")
     st.markdown("### ⭐ Popular Stocks")
     
