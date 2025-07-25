@@ -12,6 +12,7 @@ StockScope is a modern, feature-rich Streamlit web application for comprehensive
 ✅ **Enhanced Metrics** - Additional performance indicators and analytics  
 ✅ **Improved Data Table** - Enhanced historical data explorer with column formatting  
 ✅ **Welcome Screen Redesign** - Modern landing page with feature showcase  
+✅ **Database Removed** - Application runs without database dependency per user request  
 
 ## User Preferences
 
