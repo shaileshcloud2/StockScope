@@ -2,6 +2,222 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
+import numpy as np
+
+
+def detect_golden_death_cross(data):
+    """
+    Detect Golden Cross and Death Cross patterns in stock data.
+    
+    Golden Cross: MA50 crosses above MA200 (bullish signal)
+    Death Cross: MA50 crosses below MA200 (bearish signal)
+    
+    Args:
+        data (pd.DataFrame): Stock data with Close prices
+        
+    Returns:
+        pd.DataFrame: DataFrame with cross events including date, type, and percentage change
+    """
+    if len(data) < 200:
+        return pd.DataFrame(columns=['Date', 'Cross Type', 'Close Price', 'Current Price', '% Change', 'Days Since'])
+    
+    df = data.copy()
+    
+    # Calculate moving averages
+    df['MA_50'] = df['Close'].rolling(window=50).mean()
+    df['MA_200'] = df['Close'].rolling(window=200).mean()
+    
+    # Detect crossovers
+    df['Golden_Cross'] = (df['MA_50'] > df['MA_200']) & (df['MA_50'].shift(1) <= df['MA_200'].shift(1))
+    df['Death_Cross'] = (df['MA_50'] < df['MA_200']) & (df['MA_50'].shift(1) >= df['MA_200'].shift(1))
+    
+    # Get current price for percentage calculation
+    current_price = df['Close'].iloc[-1]
+    current_date = df.index[-1]
+    
+    # Collect cross events
+    cross_events = []
+    
+    # Golden Cross events
+    golden_crosses = df[df['Golden_Cross'] == True]
+    for idx, row in golden_crosses.iterrows():
+        close_price = row['Close']
+        pct_change = ((current_price - close_price) / close_price) * 100
+        days_since = (current_date - idx).days
+        cross_events.append({
+            'Date': idx.strftime('%Y-%m-%d'),
+            'Cross Type': 'Golden Cross',
+            'Close Price': f"₹{close_price:,.2f}",
+            'Current Price': f"₹{current_price:,.2f}",
+            '% Change': f"{pct_change:+.2f}%",
+            'Days Since': days_since,
+            'pct_value': pct_change  # For sorting
+        })
+    
+    # Death Cross events
+    death_crosses = df[df['Death_Cross'] == True]
+    for idx, row in death_crosses.iterrows():
+        close_price = row['Close']
+        pct_change = ((current_price - close_price) / close_price) * 100
+        days_since = (current_date - idx).days
+        cross_events.append({
+            'Date': idx.strftime('%Y-%m-%d'),
+            'Cross Type': 'Death Cross',
+            'Close Price': f"₹{close_price:,.2f}",
+            'Current Price': f"₹{current_price:,.2f}",
+            '% Change': f"{pct_change:+.2f}%",
+            'Days Since': days_since,
+            'pct_value': pct_change  # For sorting
+        })
+    
+    # Create DataFrame and sort by date
+    if cross_events:
+        result_df = pd.DataFrame(cross_events)
+        result_df = result_df.sort_values('Date', ascending=False)
+        # Drop the sorting column
+        result_df = result_df.drop(columns=['pct_value'])
+        return result_df
+    else:
+        return pd.DataFrame(columns=['Date', 'Cross Type', 'Close Price', 'Current Price', '% Change', 'Days Since'])
+
+
+def create_cross_analysis_chart(data, symbol):
+    """
+    Create a chart highlighting Golden Cross and Death Cross events.
+    
+    Args:
+        data (pd.DataFrame): Stock data with OHLCV columns
+        symbol (str): Stock symbol
+        
+    Returns:
+        plotly.graph_objects.Figure: Interactive chart with cross markers
+    """
+    if len(data) < 200:
+        return None
+    
+    df = data.copy()
+    
+    # Calculate moving averages
+    df['MA_50'] = df['Close'].rolling(window=50).mean()
+    df['MA_200'] = df['Close'].rolling(window=200).mean()
+    
+    # Detect crossovers
+    df['Golden_Cross'] = (df['MA_50'] > df['MA_200']) & (df['MA_50'].shift(1) <= df['MA_200'].shift(1))
+    df['Death_Cross'] = (df['MA_50'] < df['MA_200']) & (df['MA_50'].shift(1) >= df['MA_200'].shift(1))
+    
+    fig = go.Figure()
+    
+    # Add close price line
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df['Close'],
+            mode='lines',
+            name='Close Price',
+            line=dict(color='#00ff88', width=2),
+            opacity=0.8
+        )
+    )
+    
+    # Add MA50 line
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df['MA_50'],
+            mode='lines',
+            name='MA 50',
+            line=dict(color='#FFD700', width=2),
+            opacity=0.9
+        )
+    )
+    
+    # Add MA200 line
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df['MA_200'],
+            mode='lines',
+            name='MA 200',
+            line=dict(color='#FF6B6B', width=2),
+            opacity=0.9
+        )
+    )
+    
+    # Add Golden Cross markers
+    golden_df = df[df['Golden_Cross'] == True]
+    if not golden_df.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=golden_df.index,
+                y=golden_df['Close'],
+                mode='markers',
+                name='Golden Cross',
+                marker=dict(
+                    symbol='triangle-up',
+                    size=15,
+                    color='#00FF00',
+                    line=dict(width=2, color='white')
+                ),
+                hovertemplate='<b>Golden Cross</b><br>' +
+                             'Date: %{x}<br>' +
+                             'Price: ₹%{y:,.2f}<br>' +
+                             '<extra></extra>'
+            )
+        )
+    
+    # Add Death Cross markers
+    death_df = df[df['Death_Cross'] == True]
+    if not death_df.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=death_df.index,
+                y=death_df['Close'],
+                mode='markers',
+                name='Death Cross',
+                marker=dict(
+                    symbol='triangle-down',
+                    size=15,
+                    color='#FF0000',
+                    line=dict(width=2, color='white')
+                ),
+                hovertemplate='<b>Death Cross</b><br>' +
+                             'Date: %{x}<br>' +
+                             'Price: ₹%{y:,.2f}<br>' +
+                             '<extra></extra>'
+            )
+        )
+    
+    # Update layout
+    fig.update_layout(
+        title=f'{symbol} - Golden Cross & Death Cross Analysis',
+        xaxis_title='Date',
+        yaxis_title='Price (₹)',
+        template='plotly_dark',
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        ),
+        hovermode='x unified',
+        height=500
+    )
+    
+    # Update axes
+    fig.update_xaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128,128,128,0.2)'
+    )
+    
+    fig.update_yaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128,128,128,0.2)'
+    )
+    
+    return fig
 
 def create_price_chart(data, symbol, chart_type="candlestick"):
     """
@@ -81,21 +297,7 @@ def create_price_chart(data, symbol, chart_type="candlestick"):
         row=2, col=1
     )
     
-    # Add moving averages
-    if len(data) >= 20:
-        ma20 = data['Close'].rolling(window=20).mean()
-        fig.add_trace(
-            go.Scatter(
-                x=data.index,
-                y=ma20,
-                mode='lines',
-                name='MA20',
-                line=dict(color='orange', width=1, dash='dash'),
-                opacity=0.8
-            ),
-            row=1, col=1
-        )
-    
+    # Add moving averages (MA50 and MA200 for Golden/Death Cross analysis)
     if len(data) >= 50:
         ma50 = data['Close'].rolling(window=50).mean()
         fig.add_trace(
@@ -104,8 +306,22 @@ def create_price_chart(data, symbol, chart_type="candlestick"):
                 y=ma50,
                 mode='lines',
                 name='MA50',
-                line=dict(color='blue', width=1, dash='dot'),
-                opacity=0.8
+                line=dict(color='#FFD700', width=2),
+                opacity=0.9
+            ),
+            row=1, col=1
+        )
+    
+    if len(data) >= 200:
+        ma200 = data['Close'].rolling(window=200).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=data.index,
+                y=ma200,
+                mode='lines',
+                name='MA200',
+                line=dict(color='#FF6B6B', width=2),
+                opacity=0.9
             ),
             row=1, col=1
         )
