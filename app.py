@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import yfinance as yf
 from utils.stock_data import StockDataFetcher
-from utils.chart_utils import create_price_chart, create_volume_chart
+from utils.chart_utils import create_price_chart, create_volume_chart, detect_golden_death_cross, create_cross_analysis_chart
 from utils.stock_database import search_stocks, get_popular_stocks, get_all_sectors, get_stocks_by_sector
 from utils.watchlist_pages import render_watchlist_navigation
 import io
@@ -511,6 +511,86 @@ if st.session_state.stock_data is not None:
         st.markdown("**Simple price trend line**")
         line_chart = create_price_chart(stock_data, symbol, chart_type="line")
         st.plotly_chart(line_chart, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Golden Cross / Death Cross Analysis Section
+    st.markdown("### 🔄 Golden Cross & Death Cross Analysis")
+    
+    st.markdown("""
+    <div class="feature-highlight">
+        <strong>What is Golden Cross & Death Cross?</strong><br>
+        • <strong style="color: #00FF00;">Golden Cross</strong>: When 50-day MA crosses ABOVE 200-day MA (Bullish signal)<br>
+        • <strong style="color: #FF0000;">Death Cross</strong>: When 50-day MA crosses BELOW 200-day MA (Bearish signal)
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if len(stock_data) >= 200:
+        # Detect cross events
+        cross_events = detect_golden_death_cross(stock_data)
+        
+        # Create cross analysis chart
+        cross_chart = create_cross_analysis_chart(stock_data, symbol)
+        
+        if cross_chart is not None:
+            st.plotly_chart(cross_chart, use_container_width=True)
+        
+        # Display cross events table
+        if not cross_events.empty:
+            st.markdown("#### 📋 Cross Events History")
+            
+            # Summary metrics
+            golden_count = len(cross_events[cross_events['Cross Type'] == 'Golden Cross'])
+            death_count = len(cross_events[cross_events['Cross Type'] == 'Death Cross'])
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    label="🔼 Golden Crosses",
+                    value=golden_count,
+                    help="Number of bullish crossover events"
+                )
+            with col2:
+                st.metric(
+                    label="🔽 Death Crosses",
+                    value=death_count,
+                    help="Number of bearish crossover events"
+                )
+            with col3:
+                st.metric(
+                    label="📊 Total Events",
+                    value=len(cross_events),
+                    help="Total number of cross events detected"
+                )
+            
+            # Display the events table with styling
+            st.dataframe(
+                cross_events,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Date": st.column_config.TextColumn("📅 Date"),
+                    "Cross Type": st.column_config.TextColumn("🔄 Cross Type"),
+                    "Close Price": st.column_config.TextColumn("💰 Price at Cross"),
+                    "Current Price": st.column_config.TextColumn("📈 Current Price"),
+                    "% Change": st.column_config.TextColumn("📊 % Change Since Cross"),
+                    "Days Since": st.column_config.NumberColumn("⏱️ Days Ago")
+                }
+            )
+            
+            st.markdown("""
+            <div class="feature-highlight" style="margin-top: 1rem;">
+                <strong>📈 How to Read This Data:</strong><br>
+                • <strong>% Change</strong>: Shows how much the price has moved since the cross event<br>
+                • <strong>Green values</strong> in % Change indicate price is UP since the cross<br>
+                • <strong>Red values</strong> in % Change indicate price is DOWN since the cross<br>
+                • <strong>Days Since</strong>: Number of trading days since the event occurred
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("📊 No Golden Cross or Death Cross events detected in the selected period. Try selecting a longer time range (2 Years or 5 Years) to see historical cross events.")
+    else:
+        st.warning(f"⚠️ Need at least 200 days of data for Golden Cross / Death Cross analysis. Current data has {len(stock_data)} days. Please select a longer time period (2 Years or 5 Years).")
     
     st.markdown("---")
     
