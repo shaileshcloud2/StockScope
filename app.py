@@ -18,100 +18,204 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for modern UI
+# Custom CSS for modern colorful UI
 st.markdown("""
 <style>
+    /* Main background with gradient */
+    .stApp {
+        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+        border-right: 2px solid #00D4AA;
+    }
+    
     .main-header {
-        background: linear-gradient(90deg, #00D4AA 0%, #00A3FF 100%);
+        background: linear-gradient(90deg, #00D4AA 0%, #7B68EE 50%, #FF6B6B 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
-        font-size: 3rem;
-        font-weight: 700;
+        font-size: 3.5rem;
+        font-weight: 800;
         text-align: center;
         margin-bottom: 0.5rem;
+        text-shadow: 0 0 30px rgba(0, 212, 170, 0.5);
     }
     
     .subtitle {
         text-align: center;
-        color: #8B949E;
-        font-size: 1.2rem;
+        background: linear-gradient(90deg, #a8edea 0%, #fed6e3 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 1.3rem;
         margin-bottom: 2rem;
+        font-weight: 500;
     }
     
     .stock-card {
-        background: linear-gradient(135deg, #1E1E2E 0%, #262738 100%);
-        border-radius: 15px;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        border-radius: 20px;
         padding: 1.5rem;
         margin: 1rem 0;
-        border: 1px solid #00D4AA20;
-        box-shadow: 0 8px 32px rgba(0, 212, 170, 0.1);
+        border: 2px solid rgba(0, 212, 170, 0.4);
+        box-shadow: 0 10px 40px rgba(0, 212, 170, 0.2), 0 0 20px rgba(123, 104, 238, 0.1);
     }
     
     .metric-card {
-        background: rgba(0, 212, 170, 0.1);
-        border-radius: 10px;
-        padding: 1rem;
+        background: linear-gradient(135deg, rgba(123, 104, 238, 0.2) 0%, rgba(0, 212, 170, 0.2) 100%);
+        border-radius: 15px;
+        padding: 1.2rem;
         text-align: center;
-        border: 1px solid rgba(0, 212, 170, 0.2);
+        border: 1px solid rgba(123, 104, 238, 0.4);
+        box-shadow: 0 4px 15px rgba(123, 104, 238, 0.2);
     }
     
     .search-container {
-        background: rgba(255, 255, 255, 0.05);
+        background: linear-gradient(135deg, rgba(30, 60, 114, 0.5) 0%, rgba(42, 82, 152, 0.5) 100%);
         border-radius: 15px;
         padding: 1.5rem;
         margin-bottom: 1rem;
-        border: 1px solid rgba(0, 212, 170, 0.2);
+        border: 1px solid rgba(0, 212, 170, 0.3);
     }
     
     .suggestion-item {
-        background: rgba(0, 212, 170, 0.1);
-        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(0, 212, 170, 0.15) 0%, rgba(123, 104, 238, 0.15) 100%);
+        border-radius: 10px;
         padding: 0.8rem;
         margin: 0.3rem 0;
-        border: 1px solid rgba(0, 212, 170, 0.2);
+        border: 1px solid rgba(0, 212, 170, 0.3);
         cursor: pointer;
         transition: all 0.3s ease;
     }
     
     .suggestion-item:hover {
-        background: rgba(0, 212, 170, 0.2);
+        background: linear-gradient(135deg, rgba(0, 212, 170, 0.3) 0%, rgba(123, 104, 238, 0.3) 100%);
         border-color: #00D4AA;
+        transform: translateX(5px);
     }
     
     .sector-tag {
-        background: linear-gradient(90deg, #00D4AA, #00A3FF);
-        color: white;
-        padding: 0.2rem 0.6rem;
+        background: linear-gradient(90deg, #FF6B6B, #FFE66D, #4ECDC4);
+        color: #1a1a2e;
+        padding: 0.3rem 0.8rem;
         border-radius: 20px;
         font-size: 0.8rem;
-        font-weight: 500;
+        font-weight: 600;
     }
     
     .popular-stock-btn {
-        background: linear-gradient(135deg, #00D4AA 0%, #00A3FF 100%);
-        border-radius: 10px;
+        background: linear-gradient(135deg, #00D4AA 0%, #7B68EE 100%);
+        border-radius: 12px;
         padding: 0.8rem;
         text-align: center;
         color: white;
         font-weight: 600;
         cursor: pointer;
-        transition: transform 0.2s ease;
+        transition: all 0.3s ease;
         border: none;
         width: 100%;
     }
     
     .popular-stock-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0, 212, 170, 0.3);
+        transform: translateY(-3px);
+        box-shadow: 0 10px 30px rgba(123, 104, 238, 0.4);
     }
     
     .feature-highlight {
-        background: linear-gradient(135deg, rgba(0, 212, 170, 0.1) 0%, rgba(0, 163, 255, 0.1) 100%);
-        border-left: 4px solid #00D4AA;
-        padding: 1rem;
-        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(0, 212, 170, 0.15) 0%, rgba(123, 104, 238, 0.15) 50%, rgba(255, 107, 107, 0.15) 100%);
+        border-left: 4px solid;
+        border-image: linear-gradient(180deg, #00D4AA, #7B68EE, #FF6B6B) 1;
+        padding: 1.2rem;
+        border-radius: 0 12px 12px 0;
         margin: 1rem 0;
+    }
+    
+    /* Colorful metric styling */
+    [data-testid="stMetricValue"] {
+        color: #00D4AA !important;
+        font-weight: 700;
+    }
+    
+    [data-testid="stMetricDelta"] svg {
+        stroke: #00D4AA;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        background: linear-gradient(135deg, #00D4AA 0%, #7B68EE 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(123, 104, 238, 0.4);
+    }
+    
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #FF6B6B 0%, #FFE66D 100%);
+        color: #1a1a2e;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        background: linear-gradient(90deg, rgba(0, 212, 170, 0.1), rgba(123, 104, 238, 0.1));
+        border-radius: 10px;
+        padding: 5px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        color: #a8edea;
+        font-weight: 500;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #00D4AA 0%, #7B68EE 100%);
+        border-radius: 8px;
+    }
+    
+    /* DataFrame styling */
+    [data-testid="stDataFrame"] {
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0, 212, 170, 0.15);
+    }
+    
+    /* Selectbox styling */
+    .stSelectbox > div > div {
+        background: linear-gradient(135deg, rgba(30, 60, 114, 0.8) 0%, rgba(42, 82, 152, 0.8) 100%);
+        border: 1px solid rgba(0, 212, 170, 0.3);
+        border-radius: 10px;
+    }
+    
+    /* Text input styling */
+    .stTextInput > div > div > input {
+        background: linear-gradient(135deg, rgba(30, 60, 114, 0.8) 0%, rgba(42, 82, 152, 0.8) 100%);
+        border: 1px solid rgba(0, 212, 170, 0.3);
+        border-radius: 10px;
+        color: white;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: linear-gradient(135deg, rgba(0, 212, 170, 0.1) 0%, rgba(123, 104, 238, 0.1) 100%);
+        border-radius: 10px;
+    }
+    
+    /* Golden/Death cross markers */
+    .golden-marker {
+        color: #00FF00;
+        font-weight: bold;
+    }
+    
+    .death-marker {
+        color: #FF4444;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
