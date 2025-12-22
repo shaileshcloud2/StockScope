@@ -8,7 +8,7 @@ from utils.stock_data import StockDataFetcher
 from utils.chart_utils import create_price_chart, create_volume_chart, detect_golden_death_cross, create_cross_analysis_chart
 from utils.stock_database import search_stocks, get_popular_stocks, get_all_sectors, get_stocks_by_sector
 from utils.watchlist_pages import render_watchlist_navigation
-from utils.nse500_analyzer import analyze_nse500_crosses, filter_results
+from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education
 import io
 
 # Page configuration
@@ -262,6 +262,32 @@ if st.session_state.get('page_mode') == 'market_report':
         if st.button("🔄 Refresh Analysis", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
+    
+    st.markdown("---")
+    
+    # RSI Information Expander
+    with st.expander("📚 Understanding RSI (Relative Strength Index)", expanded=False):
+        rsi_info = get_rsi_education()
+        st.markdown("**RSI Formula:**")
+        st.code(rsi_info['formula'], language="text")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Key Signals:**")
+            for signal, description in rsi_info['signals'].items():
+                st.markdown(f"- **{signal.replace('_', ' ').title()}**: {description}")
+        
+        with col2:
+            st.markdown("**Divergence Signals:**")
+            for div_type, description in rsi_info['divergence'].items():
+                st.markdown(f"- **{div_type.title()}**: {description}")
+        
+        st.markdown("**Limitations (Important!):**")
+        for limitation in rsi_info['limitations']:
+            st.markdown(f"- {limitation}")
+        
+        st.info("💡 **Pro Tip**: Use RSI with Moving Averages (MA50/MA200), Support/Resistance levels, and Volume for best results!")
     
     st.markdown("---")
     
