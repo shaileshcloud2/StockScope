@@ -8,6 +8,7 @@ from utils.stock_data import StockDataFetcher
 from utils.chart_utils import create_price_chart, create_volume_chart, detect_golden_death_cross, create_cross_analysis_chart
 from utils.stock_database import search_stocks, get_popular_stocks, get_all_sectors, get_stocks_by_sector
 from utils.watchlist_pages import render_watchlist_navigation
+from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education
 import io
 
 # Page configuration
@@ -241,6 +242,120 @@ data_fetcher = get_data_fetcher()
 if 'stock_fetcher' not in st.session_state:
     st.session_state.stock_fetcher = data_fetcher
 
+# Check if we should render market report
+if st.session_state.get('page_mode') == 'market_report':
+    # Add back to main button in sidebar
+    with st.sidebar:
+        if st.button("← Back to Main Analysis", use_container_width=True):
+            st.session_state.page_mode = 'main'
+            st.rerun()
+    
+    st.markdown('<h1 class="main-header">📊 NSE 500 Market Report</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Golden Cross & Death Cross Analysis - Past 7 Days</p>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        cross_filter = st.selectbox("Filter by Cross Type:", ["All", "Golden Cross", "Death Cross"])
+    with col2:
+        recommendation_filter = st.selectbox("Filter by Recommendation:", ["All", "BUY", "HOLD", "SELL"])
+    with col3:
+        if st.button("🔄 Refresh Analysis", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # RSI Information Expander
+    with st.expander("📚 Understanding RSI (Relative Strength Index)", expanded=False):
+        rsi_info = get_rsi_education()
+        st.markdown("**RSI Formula:**")
+        st.code(rsi_info['formula'], language="text")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Key Signals:**")
+            for signal, description in rsi_info['signals'].items():
+                st.markdown(f"- **{signal.replace('_', ' ').title()}**: {description}")
+        
+        with col2:
+            st.markdown("**Divergence Signals:**")
+            for div_type, description in rsi_info['divergence'].items():
+                st.markdown(f"- **{div_type.title()}**: {description}")
+        
+        st.markdown("**Limitations (Important!):**")
+        for limitation in rsi_info['limitations']:
+            st.markdown(f"- {limitation}")
+        
+        st.info("💡 **Pro Tip**: Use RSI with Moving Averages (MA50/MA200), Support/Resistance levels, and Volume for best results!")
+    
+    st.markdown("---")
+    
+    with st.spinner("📊 Analyzing NSE 500 stocks for Golden/Death crosses..."):
+        market_data = analyze_nse500_crosses()
+    
+    if market_data is not None and not market_data.empty:
+        filtered_data = filter_results(market_data, cross_filter if cross_filter != "All" else None, 
+                                      recommendation_filter if recommendation_filter != "All" else None)
+        
+        st.markdown(f"### Found {len(filtered_data)} stocks with recent crosses")
+        
+        # Summary metrics
+        gold_count = len(market_data[market_data['Cross Type'] == 'Golden Cross'])
+        death_count = len(market_data[market_data['Cross Type'] == 'Death Cross'])
+        buy_count = len(market_data[market_data['Recommendation'] == 'BUY'])
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("🟢 Golden Crosses", gold_count)
+        with col2:
+            st.metric("🔴 Death Crosses", death_count)
+        with col3:
+            st.metric("💰 Buy Signals", buy_count)
+        with col4:
+            st.metric("📊 Total Signals", len(market_data))
+        
+        st.markdown("---")
+        
+        # Display table
+        display_cols = ['Symbol', 'Company Name', 'Cross Type', 'Cross Date', 'Price at Cross', 
+                       'Current Price', 'Price Change %', 'RSI', 'P/E Ratio', 'ROI %', 'Divergence', 'Recommendation', 'Reason']
+        
+        st.dataframe(
+            filtered_data[display_cols],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'Symbol': st.column_config.TextColumn('📍 Symbol'),
+                'Company Name': st.column_config.TextColumn('🏢 Company'),
+                'Cross Type': st.column_config.TextColumn('🔄 Cross Type'),
+                'Cross Date': st.column_config.TextColumn('📅 Date'),
+                'Price at Cross': st.column_config.TextColumn('💰 Price @ Cross'),
+                'Current Price': st.column_config.TextColumn('📈 Current Price'),
+                'Price Change %': st.column_config.TextColumn('📊 % Change'),
+                'RSI': st.column_config.TextColumn('RSI'),
+                'P/E Ratio': st.column_config.TextColumn('P/E'),
+                'ROI %': st.column_config.TextColumn('ROI'),
+                'Divergence': st.column_config.TextColumn('🔀 Divergence'),
+                'Recommendation': st.column_config.TextColumn('⭐ Recommendation'),
+                'Reason': st.column_config.TextColumn('💡 Reason')
+            }
+        )
+        
+        # Download button
+        csv_data = filtered_data[display_cols].to_csv(index=False)
+        st.download_button(
+            label="💾 Download Report as CSV",
+            data=csv_data,
+            file_name=f"NSE500_Market_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    else:
+        st.warning("⚠️ No stocks with recent crosses found. Analyzing...")
+    
+    st.stop()
+
 # Check if we should render watchlist pages
 if st.session_state.get('page_mode') == 'watchlist':
     # Add back to main button in sidebar
@@ -400,8 +515,14 @@ with st.sidebar:
             st.error("❌ Please select a stock or enter a valid symbol.")
     
     # Quick access to popular stocks
-    # Add Excel Watchlist navigation
+    # Add Market Report and Excel Watchlist navigation
     st.markdown("---")
+    st.markdown("### 📊 Market Analysis Reports")
+    
+    if st.button("🎯 NSE 500 Market Report", use_container_width=True, help="Analyze NSE 500 stocks for Golden/Death crosses in past week"):
+        st.session_state.page_mode = 'market_report'
+        st.rerun()
+    
     st.markdown("### 📊 Excel Watchlists")
     
     if st.button("📋 View Excel Watchlists", use_container_width=True, help="Analyze uploaded Excel file data"):
