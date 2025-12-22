@@ -319,7 +319,7 @@ if st.session_state.get('page_mode') == 'market_report':
         
         # Display table
         display_cols = ['Symbol', 'Company Name', 'Cross Type', 'Cross Date', 'Price at Cross', 
-                       'Current Price', 'Price Change %', 'RSI', 'P/E Ratio', 'ROI %', 'Recommendation', 'Reason']
+                       'Current Price', 'Price Change %', 'RSI', 'P/E Ratio', 'ROI %', 'Divergence', 'Recommendation', 'Reason']
         
         st.dataframe(
             filtered_data[display_cols],
@@ -336,6 +336,7 @@ if st.session_state.get('page_mode') == 'market_report':
                 'RSI': st.column_config.TextColumn('RSI'),
                 'P/E Ratio': st.column_config.TextColumn('P/E'),
                 'ROI %': st.column_config.TextColumn('ROI'),
+                'Divergence': st.column_config.TextColumn('🔀 Divergence'),
                 'Recommendation': st.column_config.TextColumn('⭐ Recommendation'),
                 'Reason': st.column_config.TextColumn('💡 Reason')
             }
