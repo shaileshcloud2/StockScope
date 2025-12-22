@@ -142,6 +142,59 @@ def calculate_rsi(data, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi.iloc[-1]
 
+def detect_divergence(data):
+    """Detect RSI divergence patterns
+    
+    Bullish Divergence: Price makes lower low, RSI makes higher low
+    Bearish Divergence: Price makes higher high, RSI makes lower high
+    
+    Returns: divergence signal as string or None
+    """
+    if len(data) < 50:
+        return None
+    
+    # Calculate RSI
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Look at last 30 days to find local highs/lows
+    recent_close = data['Close'].tail(30)
+    recent_rsi = rsi.tail(30)
+    
+    if len(recent_close) < 10:
+        return None
+    
+    # Find local lows (for bullish divergence)
+    price_lows = []
+    rsi_lows = []
+    for i in range(1, len(recent_close) - 1):
+        if recent_close.iloc[i] < recent_close.iloc[i-1] and recent_close.iloc[i] < recent_close.iloc[i+1]:
+            price_lows.append((i, recent_close.iloc[i]))
+            rsi_lows.append((i, recent_rsi.iloc[i]))
+    
+    # Find local highs (for bearish divergence)
+    price_highs = []
+    rsi_highs = []
+    for i in range(1, len(recent_close) - 1):
+        if recent_close.iloc[i] > recent_close.iloc[i-1] and recent_close.iloc[i] > recent_close.iloc[i+1]:
+            price_highs.append((i, recent_close.iloc[i]))
+            rsi_highs.append((i, recent_rsi.iloc[i]))
+    
+    # Check for bullish divergence (lower price low but higher RSI low)
+    if len(price_lows) >= 2 and len(rsi_lows) >= 2:
+        if price_lows[-1][1] < price_lows[-2][1] and rsi_lows[-1][1] > rsi_lows[-2][1]:
+            return "Bullish Divergence"
+    
+    # Check for bearish divergence (higher price high but lower RSI high)
+    if len(price_highs) >= 2 and len(rsi_highs) >= 2:
+        if price_highs[-1][1] > price_highs[-2][1] and rsi_highs[-1][1] < rsi_highs[-2][1]:
+            return "Bearish Divergence"
+    
+    return None
+
 def detect_recent_cross(data, days=7):
     """Detect if stock had Golden/Death cross in past N days
     
@@ -270,6 +323,9 @@ def analyze_nse500_crosses():
             # Get recommendation
             recommendation, reason = get_recommendation(rsi, roi, cross_type)
             
+            # Detect divergence
+            divergence = detect_divergence(data)
+            
             # Get stock name
             stock_name = ticker.info.get('longName', symbol.replace('.NS', ''))
             
@@ -284,6 +340,7 @@ def analyze_nse500_crosses():
                 'RSI': f"{rsi:.2f}" if rsi else "N/A",
                 'P/E Ratio': f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else "N/A",
                 'ROI %': f"{roi:.2f}%",
+                'Divergence': divergence if divergence else "None",
                 'Recommendation': recommendation,
                 'Reason': reason,
                 'pct_value': pct_change
