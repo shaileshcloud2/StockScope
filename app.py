@@ -378,21 +378,29 @@ st.markdown('<p class="subtitle">Advanced Indian Stock Market Analysis Platform<
 with st.sidebar:
     st.markdown("### 🔍 Smart Stock Search")
     
-    # Smart search with autocomplete
-    search_query = st.text_input(
-        "Search stocks...",
-        value=st.session_state.search_query,
-        placeholder="Type symbol or company name (e.g., RELIANCE, TCS, Infosys)",
-        help="Start typing to see suggestions",
-        key="search_input"
-    )
+    # Search input and button layout
+    col1, col2 = st.columns([4, 1])
+    
+    with col1:
+        # Smart search with autocomplete
+        search_query = st.text_input(
+            "Search stocks...",
+            value=st.session_state.search_query,
+            placeholder="Type symbol or company name (e.g., RELIANCE, TCS, Infosys)",
+            help="Start typing to see suggestions",
+            key="search_input",
+            label_visibility="collapsed"
+        )
+    
+    with col2:
+        search_button = st.button("🔍", help="Search stocks", use_container_width=True)
     
     # Initialize variables
     selected_stock = None
     full_symbol = None
     
-    # Show suggestions when user types
-    if search_query and len(search_query) >= 1:
+    # Show suggestions when user types or clicks search button
+    if (search_query and len(search_query) >= 1) or search_button:
         suggestions = search_stocks(search_query, limit=8)
         
         if suggestions:
