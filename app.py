@@ -8,7 +8,7 @@ from utils.stock_data import StockDataFetcher
 from utils.chart_utils import create_price_chart, create_volume_chart, detect_golden_death_cross, create_cross_analysis_chart
 from utils.stock_database import search_stocks, get_popular_stocks, get_all_sectors, get_stocks_by_sector
 from utils.watchlist_pages import render_watchlist_navigation
-from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education
+from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education, calculate_rsi, detect_divergence
 import io
 
 # Page configuration
@@ -467,6 +467,10 @@ with st.sidebar:
     
     period = period_options[selected_period]
     
+    # Store period info for display in metrics
+    st.session_state.selected_period_label = selected_period
+    st.session_state.selected_period = period
+    
     # Enhanced analyze button
     st.markdown("---")
     
@@ -628,14 +632,23 @@ if st.session_state.stock_data is not None:
     price_change_pct = (price_change / prev_price) * 100 if prev_price != 0 else 0
     
     # Calculate additional metrics
-    high_52w = stock_data['High'].max()
-    low_52w = stock_data['Low'].min()
+    high_period = stock_data['High'].max()
+    low_period = stock_data['Low'].min()
     avg_volume = stock_data['Volume'].mean()
     volume_change = ((stock_data['Volume'].iloc[-1] / stock_data['Volume'].iloc[-2] - 1) * 100) if len(stock_data) > 1 else 0
     
     # Price performance metrics
     period_return = ((current_price / stock_data['Close'].iloc[0]) - 1) * 100
     volatility = stock_data['Close'].pct_change().std() * 100
+    
+    # Calculate RSI
+    rsi_value = calculate_rsi(stock_data)
+    
+    # Detect divergence
+    divergence_signal = detect_divergence(stock_data)
+    
+    # Get period label for display
+    period_label = st.session_state.get('selected_period_label', '52W')
     
     # Display metrics in enhanced grid
     col1, col2, col3, col4 = st.columns(4)
@@ -660,19 +673,19 @@ if st.session_state.stock_data is not None:
     
     with col3:
         st.metric(
-            label="📈 52W High",
-            value=f"₹{high_52w:.2f}",
-            help=f"Distance from high: {((current_price/high_52w - 1) * 100):.1f}%"
+            label=f"📈 {period_label} High",
+            value=f"₹{high_period:.2f}",
+            help=f"Distance from high: {((current_price/high_period - 1) * 100):.1f}%"
         )
     
     with col4:
         st.metric(
-            label="📉 52W Low",
-            value=f"₹{low_52w:.2f}",
-            help=f"Distance from low: {((current_price/low_52w - 1) * 100):.1f}%"
+            label=f"📉 {period_label} Low",
+            value=f"₹{low_period:.2f}",
+            help=f"Distance from low: {((current_price/low_period - 1) * 100):.1f}%"
         )
     
-    # Additional metrics row
+    # Additional metrics row with RSI and Divergence
     st.markdown("### 📊 Performance Metrics")
     col1, col2, col3, col4 = st.columns(4)
     
@@ -708,6 +721,40 @@ if st.session_state.stock_data is not None:
             label="🏢 Market Cap",
             value=market_cap_display,
             help="Market capitalization"
+        )
+    
+    # RSI and Divergence metrics row
+    st.markdown("---")
+    st.markdown("### 📈 Technical Analysis")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        rsi_display = f"{rsi_value:.2f}" if rsi_value else "N/A"
+        rsi_status = ""
+        if rsi_value:
+            if rsi_value > 70:
+                rsi_status = "🔴 Overbought"
+            elif rsi_value < 30:
+                rsi_status = "🟢 Oversold"
+            elif rsi_value > 50:
+                rsi_status = "🟢 Bullish"
+            else:
+                rsi_status = "🔴 Bearish"
+        
+        st.metric(
+            label="📊 RSI (14)",
+            value=rsi_display,
+            help=f"{rsi_status} - RSI > 70 (Overbought), < 30 (Oversold), > 50 (Bullish), < 50 (Bearish)"
+        )
+    
+    with col2:
+        divergence_display = divergence_signal if divergence_signal else "None"
+        divergence_color = "🟢" if divergence_signal == "Bullish Divergence" else "🔴" if divergence_signal == "Bearish Divergence" else "⚪"
+        
+        st.metric(
+            label="🔀 Divergence Signal",
+            value=f"{divergence_color} {divergence_display}",
+            help="Bullish: Price lower low, RSI higher low (Reversal up) | Bearish: Price higher high, RSI lower high (Reversal down)"
         )
     
     st.markdown("---")
