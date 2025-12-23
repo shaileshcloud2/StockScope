@@ -378,21 +378,29 @@ st.markdown('<p class="subtitle">Advanced Indian Stock Market Analysis Platform<
 with st.sidebar:
     st.markdown("### 🔍 Smart Stock Search")
     
-    # Smart search with autocomplete
-    search_query = st.text_input(
-        "Search stocks...",
-        value=st.session_state.search_query,
-        placeholder="Type symbol or company name (e.g., RELIANCE, TCS, Infosys)",
-        help="Start typing to see suggestions",
-        key="search_input"
-    )
+    # Search input and button layout
+    col1, col2 = st.columns([4, 1])
+    
+    with col1:
+        # Smart search with autocomplete
+        search_query = st.text_input(
+            "Search stocks...",
+            value=st.session_state.search_query,
+            placeholder="Type symbol or company name (e.g., RELIANCE, TCS, Infosys)",
+            help="Start typing to see suggestions",
+            key="search_input",
+            label_visibility="collapsed"
+        )
+    
+    with col2:
+        search_button = st.button("🔍", help="Search stocks", use_container_width=True)
     
     # Initialize variables
     selected_stock = None
     full_symbol = None
     
-    # Show suggestions when user types
-    if search_query and len(search_query) >= 1:
+    # Show suggestions when user types or clicks search button
+    if (search_query and len(search_query) >= 1) or search_button:
         suggestions = search_stocks(search_query, limit=8)
         
         if suggestions:
@@ -928,6 +936,28 @@ if st.session_state.stock_data is not None:
     display_data['Daily Change (₹)'] = display_data['Close'] - display_data['Open']
     display_data['Daily Change (%)'] = ((display_data['Close'] - display_data['Open']) / display_data['Open'] * 100).round(2)
     
+    # Calculate RSI for each row
+    rsi_values = []
+    for i in range(len(stock_data)):
+        if i < 14:  # Need at least 14 periods for RSI
+            rsi_values.append(None)
+        else:
+            data_slice = stock_data.iloc[:i+1]
+            rsi = calculate_rsi(data_slice, period=14)
+            rsi_values.append(f"{rsi:.2f}" if rsi else "N/A")
+    display_data['RSI (14)'] = rsi_values
+    
+    # Calculate Divergence Signals for each row
+    divergence_values = []
+    for i in range(len(stock_data)):
+        if i < 50:  # Need at least 50 periods for divergence detection
+            divergence_values.append(None)
+        else:
+            data_slice = stock_data.iloc[:i+1]
+            divergence = detect_divergence(data_slice)
+            divergence_values.append(divergence if divergence else "—")
+    display_data['Divergence Signal'] = divergence_values
+    
     # Round numeric columns
     numeric_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close']
     for col in numeric_columns:
@@ -945,7 +975,7 @@ if st.session_state.stock_data is not None:
         display_data = display_data.head(show_rows)
     
     # Reorder columns for better presentation
-    column_order = ['Date', 'Open', 'High', 'Low', 'Close', 'Daily Change (₹)', 'Daily Change (%)', 'Volume']
+    column_order = ['Date', 'Open', 'High', 'Low', 'Close', 'Daily Change (₹)', 'Daily Change (%)', 'RSI (14)', 'Divergence Signal', 'Volume']
     if 'Adj Close' in display_data.columns:
         column_order.insert(-2, 'Adj Close')
     
@@ -964,6 +994,8 @@ if st.session_state.stock_data is not None:
             "Close": st.column_config.NumberColumn("🔒 Close", format="₹%.2f"),
             "Daily Change (₹)": st.column_config.NumberColumn("💰 Change (₹)", format="₹%.2f"),
             "Daily Change (%)": st.column_config.NumberColumn("📊 Change (%)", format="%.2f%%"),
+            "RSI (14)": st.column_config.TextColumn("📈 RSI (14)"),
+            "Divergence Signal": st.column_config.TextColumn("🔀 Divergence"),
             "Volume": st.column_config.NumberColumn("📊 Volume", format="%d"),
             "Adj Close": st.column_config.NumberColumn("⚖️ Adj Close", format="₹%.2f") if 'Adj Close' in display_data.columns else None
         }
