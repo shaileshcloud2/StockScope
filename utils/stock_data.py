@@ -82,6 +82,36 @@ class StockDataFetcher:
             st.error(f"Error fetching data for {symbol}: {str(e)}")
             return None
     
+    def calculate_valuation_metrics(self, price, df_hist):
+        """Calculate valuation metrics like PE, PB, Dividend yield etc"""
+        try:
+            # Calculate simple valuation indicators from price history
+            if df_hist is None or df_hist.empty:
+                return {}
+            
+            current_price = price
+            year_low = df_hist['Close'].min()
+            year_high = df_hist['Close'].max()
+            
+            # Price position in 52-week range (0-100 scale)
+            price_position = ((current_price - year_low) / (year_high - year_low)) * 100 if year_high != year_low else 50
+            
+            metrics = {
+                'price_position_52w': price_position,  # Position in range
+                'year_low': year_low,
+                'year_high': year_high,
+                'valuation_score': self._calculate_valuation_score(price_position)
+            }
+            return metrics
+        except:
+            return {}
+    
+    def _calculate_valuation_score(self, price_position):
+        """Calculate a simple valuation score (0-100) based on price position"""
+        # Score is higher when price is lower in the range (more value)
+        # Score is lower when price is higher in the range (less value/overbought)
+        return 100 - price_position
+    
     def _process_stock_data(self, data):
         """
         Process and clean the stock data.
