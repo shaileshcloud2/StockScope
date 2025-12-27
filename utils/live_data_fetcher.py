@@ -136,61 +136,128 @@ class LiveDataFetcher:
         
         return None
     
+    def calculate_rsi(self, data, period=14):
+        """Calculate RSI from price data"""
+        if len(data) < period:
+            return None
+        delta = data['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi.iloc[-1] if not rsi.empty else None
+
     def fetch_live_data(self, symbols: List[str]) -> Dict[str, Dict]:
-        """Fetch live data for multiple symbols"""
+        """Fetch comprehensive live data for multiple symbols"""
         live_data = {}
         
         # Process symbols in batches to avoid rate limiting
-        batch_size = 10
+        batch_size = 5
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
             try:
-                # Fetch data for batch
-                batch_str = " ".join(batch)
-                data = yf.download(batch_str, period="1d", interval="1m", progress=False)
-                
-                if data is None or data.empty:
-                    continue
-                
-                # Process each symbol in the batch
+                # Fetch 1-year data for technical analysis
                 for symbol in batch:
                     try:
-                        if len(batch) == 1:
-                            symbol_data = data
-                        else:
-                            symbol_data = data.xs(symbol, level=1, axis=1)
+                        ticker = yf.Ticker(symbol)
                         
-                        if symbol_data is not None and not symbol_data.empty:
-                            latest = symbol_data.iloc[-1]
-                            previous = symbol_data.iloc[-2] if len(symbol_data) > 1 else latest
-                            
-                            live_data[symbol] = {
-                                'current_price': latest['Close'],
-                                'previous_close': previous['Close'],
-                                'high': latest['High'],
-                                'low': latest['Low'],
-                                'volume': int(latest['Volume']),
-                                'change': latest['Close'] - previous['Close'],
-                                'change_percent': ((latest['Close'] - previous['Close']) / previous['Close']) * 100,
-                                'last_updated': datetime.now().strftime('%H:%M:%S')
-                            }
+                        # Fetch data
+                        hist_data = yf.download(symbol, period="1y", progress=False, interval="1d")
+                        
+                        if hist_data is None or hist_data.empty or len(hist_data) < 2:
+                            continue
+                        
+                        # Current data
+                        current_close = hist_data['Close'].iloc[-1]
+                        prev_close = hist_data['Close'].iloc[-2]
+                        day_high = hist_data['High'].iloc[-1]
+                        day_low = hist_data['Low'].iloc[-1]
+                        
+                        # 52-week data
+                        high_52 = hist_data['High'].max()
+                        low_52 = hist_data['Low'].min()
+                        
+                        # RSI calculation
+                        rsi = self.calculate_rsi(hist_data)
+                        
+                        # % down from 52-week high
+                        pct_from_high = ((current_close - high_52) / high_52) * 100
+                        
+                        live_data[symbol] = {
+                            'current_price': current_close,
+                            'previous_close': prev_close,
+                            'day_high': day_high,
+                            'day_low': day_low,
+                            'high_52w': high_52,
+                            'low_52w': low_52,
+                            'volume': int(hist_data['Volume'].iloc[-1]),
+                            'change': current_close - prev_close,
+                            'change_percent': ((current_close - prev_close) / prev_close) * 100,
+                            'rsi': rsi,
+                            'pct_from_high': pct_from_high,
+                            'last_updated': datetime.now().strftime('%H:%M:%S')
+                        }
                     
                     except Exception as e:
                         logger.warning(f"Error processing {symbol}: {str(e)}")
                         continue
+                
+                time.sleep(1)
             
             except Exception as e:
-                logger.error(f"Error fetching batch {batch}: {str(e)}")
+                logger.error(f"Error fetching batch: {str(e)}")
                 continue
-            
-            # Add delay between batches
-            time.sleep(0.5)
         
         return live_data
     
+    def get_recommendation(self, rsi, pct_change, pct_from_high):
+        """Generate BUY/HOLD/SELL recommendation with reasoning"""
+        if rsi is None:
+            return "HOLD", "Insufficient data for analysis"
+        
+        reasons = []
+        signal = "HOLD"
+        
+        # RSI analysis
+        if rsi > 70:
+            reasons.append("RSI > 70 (Overbought)")
+            signal = "SELL"
+        elif rsi < 30:
+            reasons.append("RSI < 30 (Oversold)")
+            signal = "BUY"
+        elif rsi > 60:
+            reasons.append("RSI strong bullish (>60)")
+            signal = "BUY"
+        elif rsi < 40:
+            reasons.append("RSI weak bearish (<40)")
+            signal = "SELL"
+        
+        # Price from 52-week high
+        if pct_from_high < -30:
+            reasons.append("Trading 30%+ below 52w high - Potential value")
+            if signal == "HOLD":
+                signal = "BUY"
+        elif pct_from_high > -5:
+            reasons.append("Near 52w high - Limited upside")
+            if signal != "BUY":
+                signal = "HOLD"
+        
+        # Price momentum
+        if pct_change > 2:
+            reasons.append("Positive momentum (>2%)")
+            if signal == "SELL":
+                signal = "HOLD"
+        elif pct_change < -2:
+            reasons.append("Negative momentum (<-2%)")
+            if signal == "BUY":
+                signal = "HOLD"
+        
+        reason_text = " | ".join(reasons) if reasons else "Mixed signals"
+        return signal, reason_text
+
     def enhance_excel_data(self, df: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
-        """Enhance Excel data with live stock information and actual names"""
+        """Enhance Excel data with comprehensive live stock information"""
         enhanced_df = df.copy()
         
         # Find price column
@@ -201,12 +268,12 @@ class LiveDataFetcher:
         price_col = price_cols[0]
         
         # Initialize new columns
-        enhanced_df['Identified_Symbol'] = None
-        enhanced_df['Stock_Name'] = None
-        enhanced_df['Live_Price'] = None
-        enhanced_df['Live_Change'] = None
-        enhanced_df['Live_Change_Percent'] = None
-        enhanced_df['Last_Updated'] = None
+        new_columns = ['Identified_Symbol', 'Stock_Name', 'Live_Price', 'Day_High', 'Day_Low', 
+                      'High_52W', 'Low_52W', 'Live_Change', 'Live_Change_Percent', 
+                      'RSI', 'From_52W_High', 'Suggestion', 'Reason', 'Last_Updated']
+        
+        for col in new_columns:
+            enhanced_df[col] = None
         
         # Identify stocks and fetch live data
         symbols_to_fetch = []
@@ -234,14 +301,25 @@ class LiveDataFetcher:
         if symbols_to_fetch:
             live_data = self.fetch_live_data(list(set(symbols_to_fetch)))
             
-            # Update dataframe with live data
+            # Update dataframe with live data and recommendations
             for symbol, data in live_data.items():
                 if symbol in symbol_mapping:
                     idx = symbol_mapping[symbol]
                     enhanced_df.at[idx, 'Live_Price'] = round(data['current_price'], 2)
+                    enhanced_df.at[idx, 'Day_High'] = round(data['day_high'], 2)
+                    enhanced_df.at[idx, 'Day_Low'] = round(data['day_low'], 2)
+                    enhanced_df.at[idx, 'High_52W'] = round(data['high_52w'], 2)
+                    enhanced_df.at[idx, 'Low_52W'] = round(data['low_52w'], 2)
                     enhanced_df.at[idx, 'Live_Change'] = round(data['change'], 2)
                     enhanced_df.at[idx, 'Live_Change_Percent'] = round(data['change_percent'], 2)
+                    enhanced_df.at[idx, 'RSI'] = round(data['rsi'], 2) if data['rsi'] else None
+                    enhanced_df.at[idx, 'From_52W_High'] = round(data['pct_from_high'], 2)
                     enhanced_df.at[idx, 'Last_Updated'] = data['last_updated']
+                    
+                    # Generate recommendation
+                    suggestion, reason = self.get_recommendation(data['rsi'], data['change_percent'], data['pct_from_high'])
+                    enhanced_df.at[idx, 'Suggestion'] = suggestion
+                    enhanced_df.at[idx, 'Reason'] = reason
         
         return enhanced_df
     

@@ -178,7 +178,7 @@ class WatchlistPages:
             self._render_quick_analysis(df, sheet_name)
     
     def _render_data_table(self, df: pd.DataFrame, sheet_name: str):
-        """Render interactive data table with live data"""
+        """Render interactive data table with comprehensive live data"""
         st.subheader(f"📊 {sheet_name} Data Table")
         
         # Enhanced filters
@@ -189,72 +189,55 @@ class WatchlistPages:
         
         with col1:
             # Suggestion filter if available
-            suggestion_col = [col for col in df.columns if 'suggestion' in col.lower()]
-            if suggestion_col and not df[suggestion_col[0]].dropna().empty:
-                suggestions = df[suggestion_col[0]].dropna().unique()
+            if 'Suggestion' in df.columns and not df['Suggestion'].dropna().empty:
+                suggestions = df['Suggestion'].dropna().unique()
                 selected_suggestions = st.multiselect(
                     "🎯 Filter by Suggestion",
                     options=suggestions,
                     default=[]
                 )
                 if selected_suggestions:
-                    mask = filtered_df[suggestion_col[0]].isin(selected_suggestions)
-                    filtered_df = filtered_df.loc[mask].copy()
+                    filtered_df = filtered_df[filtered_df['Suggestion'].isin(selected_suggestions)].copy()
         
         with col2:
-            # Market cap filter if available
-            mcap_col = [col for col in df.columns if 'cap' in col.lower() and col != 'M Cap']
-            if mcap_col and not df[mcap_col[0]].dropna().empty:
-                mcap_categories = df[mcap_col[0]].dropna().unique()
-                selected_mcap = st.multiselect(
-                    "💰 Filter by Market Cap",
-                    options=mcap_categories,
-                    default=[]
-                )
-                if selected_mcap:
-                    mask = filtered_df[mcap_col[0]].isin(selected_mcap)
-                    filtered_df = filtered_df.loc[mask].copy()
+            # RSI filter if available
+            if 'RSI' in df.columns and not df['RSI'].dropna().empty:
+                rsi_min = st.number_input("RSI Min", value=0, max_value=100)
+                rsi_max = st.number_input("RSI Max", value=100, max_value=100)
+                mask = (filtered_df['RSI'] >= rsi_min) & (filtered_df['RSI'] <= rsi_max)
+                filtered_df = filtered_df.loc[mask].copy()
         
         with col3:
-            # Industry filter if available
-            industry_col = [col for col in df.columns if 'industry' in col.lower()]
-            if industry_col and not df[industry_col[0]].dropna().empty:
-                industries = df[industry_col[0]].dropna().unique()
-                selected_industries = st.multiselect(
-                    "🏭 Filter by Industry",
-                    options=industries[:10],  # Limit to first 10 for UI
-                    default=[]
-                )
-                if selected_industries:
-                    mask = filtered_df[industry_col[0]].isin(selected_industries)
-                    filtered_df = filtered_df.loc[mask].copy()
+            # 52-week high filter
+            if 'From_52W_High' in df.columns:
+                show_value_stocks = st.checkbox("💎 Show value stocks (<-20% from 52w high)")
+                if show_value_stocks:
+                    filtered_df = filtered_df[filtered_df['From_52W_High'] < -20].copy()
         
         with col4:
             # Stock identification filter
             if 'Stock_Name' in df.columns:
                 show_identified_only = st.checkbox("✅ Show identified stocks only")
                 if show_identified_only:
-                    mask = filtered_df['Stock_Name'].notna()
-                    filtered_df = filtered_df.loc[mask].copy()
+                    filtered_df = filtered_df[filtered_df['Stock_Name'].notna()].copy()
         
-        # Prepare display dataframe with better column ordering
+        # Prepare display dataframe with optimized column ordering (no duplicates)
+        # Select only the most important columns to avoid clutter
         display_columns = []
         
-        # Prioritize important columns
-        priority_columns = ['Stock_Name', 'Identified_Symbol', 'Live_Price', 'Live_Change', 'Live_Change_Percent']
-        for col in priority_columns:
+        # Core analysis columns (live data)
+        core_columns = ['Stock_Name', 'Identified_Symbol', 'Live_Price', 'Day_High', 'Day_Low', 
+                       'High_52W', 'Low_52W', 'Live_Change_Percent', 'RSI', 'From_52W_High', 
+                       'Suggestion', 'Reason']
+        
+        for col in core_columns:
             if col in filtered_df.columns:
                 display_columns.append(col)
         
-        # Add original columns
-        original_important = ['Stock Name', 'Price', 'P Close', 'Suggestion', 'M Cap', 'Industry', 'D Change (%)']
-        for col in original_important:
-            if col in filtered_df.columns and col not in display_columns:
-                display_columns.append(col)
-        
-        # Add remaining columns
+        # Add only essential original columns (avoid duplicates like Price, Stock Name, etc)
         for col in filtered_df.columns:
-            if col not in display_columns and not col.startswith('Unnamed'):
+            if col not in display_columns and col not in ['Stock Name', 'Price', 'P Close', 'M Cap', 'Industry', 'D Change (%)', 
+                                                           'Live_Change', 'Identified_Symbol', 'Last_Updated'] and not col.startswith('Unnamed'):
                 display_columns.append(col)
         
         # Filter to existing columns
@@ -263,27 +246,39 @@ class WatchlistPages:
         
         st.markdown(f"**Showing {len(display_df)} of {len(df)} stocks**")
         
-        # Enhanced display with better formatting
+        # Enhanced display with comprehensive formatting
         column_config = {}
         
         if 'Stock_Name' in display_df.columns:
-            column_config['Stock_Name'] = st.column_config.TextColumn("🏢 Company Name", width="large")
+            column_config['Stock_Name'] = st.column_config.TextColumn("🏢 Company", width="medium")
         if 'Identified_Symbol' in display_df.columns:
             column_config['Identified_Symbol'] = st.column_config.TextColumn("📊 Symbol", width="small")
         if 'Live_Price' in display_df.columns:
-            column_config['Live_Price'] = st.column_config.NumberColumn("💰 Live Price", format="₹%.2f")
-        if 'Live_Change' in display_df.columns:
-            column_config['Live_Change'] = st.column_config.NumberColumn("📈 Change", format="₹%.2f")
+            column_config['Live_Price'] = st.column_config.NumberColumn("💰 Price", format="₹%.2f")
+        if 'Day_High' in display_df.columns:
+            column_config['Day_High'] = st.column_config.NumberColumn("📈 Day High", format="₹%.2f")
+        if 'Day_Low' in display_df.columns:
+            column_config['Day_Low'] = st.column_config.NumberColumn("📉 Day Low", format="₹%.2f")
+        if 'High_52W' in display_df.columns:
+            column_config['High_52W'] = st.column_config.NumberColumn("⬆️ 52w High", format="₹%.2f")
+        if 'Low_52W' in display_df.columns:
+            column_config['Low_52W'] = st.column_config.NumberColumn("⬇️ 52w Low", format="₹%.2f")
         if 'Live_Change_Percent' in display_df.columns:
             column_config['Live_Change_Percent'] = st.column_config.NumberColumn("📊 Change %", format="%.2f%%")
-        if 'Price' in display_df.columns:
-            column_config['Price'] = st.column_config.NumberColumn("💵 Price", format="₹%.2f")
+        if 'RSI' in display_df.columns:
+            column_config['RSI'] = st.column_config.NumberColumn("📈 RSI", format="%.2f")
+        if 'From_52W_High' in display_df.columns:
+            column_config['From_52W_High'] = st.column_config.NumberColumn("📉 From High %", format="%.2f%%")
+        if 'Suggestion' in display_df.columns:
+            column_config['Suggestion'] = st.column_config.TextColumn("⭐ Suggestion", width="small")
+        if 'Reason' in display_df.columns:
+            column_config['Reason'] = st.column_config.TextColumn("💡 Reasoning", width="large")
         
         # Display enhanced table
         st.dataframe(
             display_df,
             use_container_width=True,
-            height=400,
+            height=500,
             column_config=column_config,
             hide_index=True
         )
