@@ -130,35 +130,48 @@ class WatchlistPages:
         
         # Enhanced statistics with live data
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            identified_stocks = len(df[df['Stock_Name'].notna()]) if 'Stock_Name' in df.columns else 0
-            st.metric("Total Stocks", len(df), delta=f"{identified_stocks} identified")
-        
-        with col2:
-            if 'Live_Price' in df.columns and not df['Live_Price'].isna().all():
-                avg_live_price = df['Live_Price'].dropna().mean()
-                st.metric("Avg Live Price", f"₹{avg_live_price:.2f}" if not pd.isna(avg_live_price) else "N/A")
-            else:
-                price_cols = [col for col in df.columns if 'price' in col.lower() or 'close' in col.lower()]
-                if price_cols:
-                    avg_price = df[price_cols[0]].dropna().mean()
-                    st.metric("Avg Price", f"₹{avg_price:.2f}" if not pd.isna(avg_price) else "N/A")
-        
-        with col3:
-            if 'Live_Change_Percent' in df.columns:
-                positive_movers = len(df[df['Live_Change_Percent'] > 0])
-                negative_movers = len(df[df['Live_Change_Percent'] < 0])
-                st.metric("Gainers", positive_movers, delta=f"{negative_movers} losers")
-            else:
-                suggestion_col = [col for col in df.columns if 'suggestion' in col.lower()]
-                if suggestion_col:
-                    buy_signals = len(df[df[suggestion_col[0]].str.contains('BUY', na=False)])
-                    st.metric("Buy Signals", buy_signals)
-        
-        with col4:
-            if 'Last_Updated' in df.columns:
-                last_update = df['Last_Updated'].dropna().iloc[-1] if not df['Last_Updated'].dropna().empty else "Never"
-                st.metric("Last Updated", last_update)
+        try:
+            with col1:
+                identified_stocks = len(df[df['Stock_Name'].notna()]) if 'Stock_Name' in df.columns else 0
+                st.metric("Total Stocks", len(df), delta=f"{identified_stocks} identified")
+            
+            with col2:
+                if 'Live_Price' in df.columns:
+                    live_prices = df['Live_Price'].dropna()
+                    if len(live_prices) > 0:
+                        avg_live_price = live_prices.mean()
+                        st.metric("Avg Live Price", f"₹{avg_live_price:.2f}")
+                    else:
+                        price_cols = [col for col in df.columns if 'price' in str(col).lower() or 'close' in str(col).lower()]
+                        if price_cols:
+                            avg_price = df[price_cols[0]].dropna().mean()
+                            st.metric("Avg Price", f"₹{avg_price:.2f}" if not pd.isna(avg_price) else "N/A")
+                else:
+                    price_cols = [col for col in df.columns if 'price' in str(col).lower() or 'close' in str(col).lower()]
+                    if price_cols:
+                        avg_price = df[price_cols[0]].dropna().mean()
+                        st.metric("Avg Price", f"₹{avg_price:.2f}" if not pd.isna(avg_price) else "N/A")
+            
+            with col3:
+                if 'Live_Change_Percent' in df.columns:
+                    change_data = df['Live_Change_Percent'].dropna()
+                    if len(change_data) > 0:
+                        positive_movers = len(change_data[change_data > 0])
+                        negative_movers = len(change_data[change_data < 0])
+                        st.metric("Gainers", positive_movers, delta=f"{negative_movers} losers")
+                else:
+                    suggestion_col = [col for col in df.columns if 'suggestion' in str(col).lower()]
+                    if suggestion_col and len(df[suggestion_col[0]].dropna()) > 0:
+                        buy_count = len(df[df[suggestion_col[0]].astype(str).str.contains('BUY', na=False, case=False)])
+                        st.metric("Buy Signals", buy_count)
+            
+            with col4:
+                if 'Last_Updated' in df.columns:
+                    last_updates = df['Last_Updated'].dropna()
+                    last_update = last_updates.iloc[-1] if len(last_updates) > 0 else "Never"
+                    st.metric("Last Updated", last_update)
+        except Exception as e:
+            st.warning(f"Could not load statistics: {str(e)}")
         
         st.markdown("---")
         
@@ -189,14 +202,14 @@ class WatchlistPages:
         
         with col1:
             # Suggestion filter if available
-            if 'Suggestion' in df.columns and not df['Suggestion'].dropna().empty:
-                suggestions = df['Suggestion'].dropna().unique()
+            if 'Suggestion' in df.columns and len(df['Suggestion'].dropna()) > 0:
+                suggestions = df['Suggestion'].dropna().unique().tolist()
                 selected_suggestions = st.multiselect(
                     "🎯 Filter by Suggestion",
                     options=suggestions,
                     default=[]
                 )
-                if selected_suggestions:
+                if len(selected_suggestions) > 0:
                     filtered_df = filtered_df[filtered_df['Suggestion'].isin(selected_suggestions)].copy()
         
         with col2:
@@ -516,23 +529,43 @@ class WatchlistPages:
         st.dataframe(filtered_df, use_container_width=True)
     
     def _render_quick_analysis(self, df: pd.DataFrame, sheet_name: str):
-        """Render quick analysis and insights"""
-        st.subheader(f"📋 {sheet_name} Quick Analysis")
+        """Render quick analysis with technical and valuation metrics"""
+        st.subheader(f"📋 {sheet_name} Technical & Valuation Analysis")
         
         # Summary statistics
         col1, col2 = st.columns(2)
         
         with col1:
-            st.write("**Portfolio Summary:**")
+            st.write("**Signal Distribution:**")
             
             # Find suggestion column
             suggestion_col = [col for col in df.columns if 'suggestion' in col.lower()]
             if suggestion_col:
                 suggestion_counts = df[suggestion_col[0]].value_counts()
-                st.write("Signal Distribution:")
                 for signal, count in suggestion_counts.items():
                     percentage = (count / len(df)) * 100
                     st.write(f"• {signal}: {count} stocks ({percentage:.1f}%)")
+            
+            st.write("\n**Valuation Metrics:**")
+            # Add valuation analysis
+            price_cols = [col for col in df.columns if 'price' in str(col).lower()]
+            high_cols = [col for col in df.columns if '52' in str(col).lower() and 'high' in str(col).lower()]
+            
+            if price_cols and high_cols:
+                try:
+                    price_col = price_cols[0]
+                    high_col = high_cols[0]
+                    current_prices = df[price_col].dropna()
+                    high_prices = df[high_col].dropna()
+                    
+                    if len(current_prices) > 0 and len(high_prices) > 0:
+                        discount_from_high = 100 * (1 - (current_prices / high_prices)).mean()
+                        st.write(f"• Avg discount from 52w high: {discount_from_high:.2f}%")
+                        
+                        value_stocks = len(df[(df[price_col] < df[high_col] * 0.8)])
+                        st.write(f"• Undervalued stocks (<80% of 52w high): {value_stocks}")
+                except:
+                    pass
             
             # Market cap distribution
             mcap_col = [col for col in df.columns if 'cap' in col.lower() and df[col].dtype == 'object']
@@ -590,10 +623,34 @@ class WatchlistPages:
                 st.dataframe(top_performers[display_cols], use_container_width=True)
 
 def render_watchlist_navigation():
-    """Render navigation for watchlist pages"""
+    """Render navigation for watchlist pages with CSV support"""
     
-    # Initialize watchlist pages
-    excel_file_path = "attached_assets/Nifty_watchlist_1753452068694.xlsm"
+    # Try different file formats
+    files_to_try = [
+        "attached_assets/Holding_watchlist_All_stock_1766847674176.csv",
+        "attached_assets/Nifty_watchlist_v2_1766847674173.xlsm",
+        "attached_assets/Nifty_watchlist_1753452068694.xlsm"
+    ]
+    
+    excel_file_path = None
+    for file_path in files_to_try:
+        try:
+            if file_path.endswith('.csv'):
+                df = pd.read_csv(file_path)
+                if not df.empty:
+                    excel_file_path = file_path
+                    break
+            else:
+                df = pd.read_excel(file_path)
+                if not df.empty:
+                    excel_file_path = file_path
+                    break
+        except:
+            continue
+    
+    if excel_file_path is None:
+        st.error("No watchlist file found. Please upload an Excel or CSV file.")
+        return
     
     try:
         watchlist_pages = WatchlistPages(excel_file_path)
@@ -606,4 +663,4 @@ def render_watchlist_navigation():
             
     except Exception as e:
         st.error(f"Error loading watchlist data: {str(e)}")
-        st.info("Please ensure the Excel file is properly uploaded and accessible.")
+        st.info("Please ensure the Excel/CSV file is properly formatted.")

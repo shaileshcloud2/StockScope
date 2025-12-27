@@ -19,35 +19,51 @@ class ExcelAnalyzer:
         self.analysis_results = {}
         
     def analyze_file(self) -> Dict[str, Any]:
-        """Analyze the Excel file and return comprehensive structure information"""
+        """Analyze the Excel or CSV file and return comprehensive structure information"""
         try:
-            # Read all sheets from the Excel file
-            excel_file = pd.ExcelFile(self.file_path)
-            
             analysis = {
                 'file_name': self.file_path.split('/')[-1],
-                'sheet_names': excel_file.sheet_names,
+                'sheet_names': [],
                 'sheets_info': {},
                 'suggested_pages': [],
                 'stock_symbols': set(),
                 'data_types': {}
             }
             
-            # Analyze each sheet
-            for sheet_name in excel_file.sheet_names:
+            # Handle CSV files
+            if self.file_path.endswith('.csv'):
                 try:
-                    df = pd.read_excel(self.file_path, sheet_name=sheet_name)
+                    df = pd.read_csv(self.file_path)
+                    sheet_name = self.file_path.split('/')[-1].replace('.csv', '')
+                    analysis['sheet_names'] = [sheet_name]
                     sheet_info = self._analyze_sheet(df, sheet_name)
                     analysis['sheets_info'][sheet_name] = sheet_info
                     self.sheets_data[sheet_name] = df
-                    
-                    # Extract stock symbols
                     symbols = self._extract_stock_symbols(df)
                     analysis['stock_symbols'].update(symbols)
-                    
                 except Exception as e:
-                    logger.warning(f"Could not read sheet '{sheet_name}': {str(e)}")
-                    analysis['sheets_info'][sheet_name] = {'error': str(e)}
+                    logger.error(f"Error reading CSV file: {str(e)}")
+                    return {'error': str(e)}
+            else:
+                # Handle Excel files
+                excel_file = pd.ExcelFile(self.file_path)
+                analysis['sheet_names'] = excel_file.sheet_names
+                
+                # Analyze each sheet
+                for sheet_name in excel_file.sheet_names:
+                    try:
+                        df = pd.read_excel(self.file_path, sheet_name=sheet_name)
+                        sheet_info = self._analyze_sheet(df, sheet_name)
+                        analysis['sheets_info'][sheet_name] = sheet_info
+                        self.sheets_data[sheet_name] = df
+                        
+                        # Extract stock symbols
+                        symbols = self._extract_stock_symbols(df)
+                        analysis['stock_symbols'].update(symbols)
+                        
+                    except Exception as e:
+                        logger.warning(f"Could not read sheet '{sheet_name}': {str(e)}")
+                        analysis['sheets_info'][sheet_name] = {'error': str(e)}
             
             # Generate page suggestions based on analysis
             analysis['suggested_pages'] = self._generate_page_suggestions(analysis)
@@ -181,7 +197,9 @@ class ExcelAnalyzer:
     
     def get_sheet_data(self, sheet_name: str) -> pd.DataFrame:
         """Get data for a specific sheet"""
-        return self.sheets_data.get(sheet_name, pd.DataFrame())
+        if sheet_name in self.sheets_data:
+            return self.sheets_data[sheet_name].copy()
+        return pd.DataFrame()
     
     def get_stock_symbols_list(self) -> List[str]:
         """Get list of all extracted stock symbols"""
