@@ -92,18 +92,18 @@ class ExcelAnalyzer:
                     info['numeric_columns'].append(col)
                     
                     # Check if it looks like price data
-                    if any(keyword in col.lower() for keyword in ['price', 'value', 'amount', 'rs', 'inr', 'cost']):
+                    if any(keyword in str(col).lower() for keyword in ['price', 'value', 'amount', 'rs', 'inr', 'cost']):
                         info['potential_price_columns'].append(col)
                         
                 elif df[col].dtype == 'object':
                     info['text_columns'].append(col)
                     
                     # Check if it looks like stock symbols
-                    if any(keyword in col.lower() for keyword in ['symbol', 'stock', 'ticker', 'code', 'nse', 'bse']):
+                    if any(keyword in str(col).lower() for keyword in ['symbol', 'stock', 'ticker', 'code', 'nse', 'bse']):
                         info['potential_stock_columns'].append(col)
                     
                     # Check if it looks like dates
-                    elif any(keyword in col.lower() for keyword in ['date', 'time', 'day', 'month', 'year']):
+                    elif any(keyword in str(col).lower() for keyword in ['date', 'time', 'day', 'month', 'year']):
                         info['potential_date_columns'].append(col)
         
         return info

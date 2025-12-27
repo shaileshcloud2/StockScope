@@ -201,18 +201,19 @@ class WatchlistPages:
         
         with col2:
             # RSI filter if available
-            if 'RSI' in df.columns and not df['RSI'].dropna().empty:
+            if 'RSI' in df.columns and len(df['RSI'].dropna()) > 0:
                 rsi_min = st.number_input("RSI Min", value=0, max_value=100)
                 rsi_max = st.number_input("RSI Max", value=100, max_value=100)
                 mask = (filtered_df['RSI'] >= rsi_min) & (filtered_df['RSI'] <= rsi_max)
-                filtered_df = filtered_df.loc[mask].copy()
+                filtered_df = filtered_df.loc[mask.fillna(False)].copy()
         
         with col3:
             # 52-week high filter
-            if 'From_52W_High' in df.columns:
+            if 'From_52W_High' in df.columns and len(df['From_52W_High'].dropna()) > 0:
                 show_value_stocks = st.checkbox("💎 Show value stocks (<-20% from 52w high)")
                 if show_value_stocks:
-                    filtered_df = filtered_df[filtered_df['From_52W_High'] < -20].copy()
+                    mask = filtered_df['From_52W_High'] < -20
+                    filtered_df = filtered_df.loc[mask.fillna(False)].copy()
         
         with col4:
             # Stock identification filter
