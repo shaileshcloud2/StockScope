@@ -267,13 +267,15 @@ class LiveDataFetcher:
         
         price_col = price_cols[0]
         
-        # Initialize new columns
+        # Initialize new columns with live data metrics
         new_columns = ['Identified_Symbol', 'Stock_Name', 'Live_Price', 'Day_High', 'Day_Low', 
                       'High_52W', 'Low_52W', 'Live_Change', 'Live_Change_Percent', 
-                      'RSI', 'From_52W_High', 'Suggestion', 'Reason', 'Last_Updated']
+                      'Divergence_Signal', 'RSI', 'From_52W_High', 'Valuation_Score',
+                      'Market_Cap_Bucket', 'Industry_Sector', 'Suggestion', 'Reason', 'Last_Updated']
         
         for col in new_columns:
-            enhanced_df[col] = None
+            if col not in enhanced_df.columns:
+                enhanced_df[col] = None
         
         # Identify stocks and fetch live data
         symbols_to_fetch = []
@@ -283,19 +285,25 @@ class LiveDataFetcher:
             if pd.isna(row[price_col]):
                 continue
             
-            price = float(row[price_col])
-            suggestion = str(row.get('Suggestion', '')) if pd.notna(row.get('Suggestion')) else None
-            mcap = str(row.get('M Cap', '')) if pd.notna(row.get('M Cap')) else None
-            industry = str(row.get('Industry', '')) if pd.notna(row.get('Industry')) else None
-            
-            # Try to identify the stock
-            identified_symbol = self.identify_stock_from_price(price, suggestion, mcap, industry)
-            
-            if identified_symbol:
-                enhanced_df.at[idx, 'Identified_Symbol'] = identified_symbol
-                enhanced_df.at[idx, 'Stock_Name'] = self.stock_mapping[identified_symbol]['name']
-                symbols_to_fetch.append(identified_symbol)
-                symbol_mapping[identified_symbol] = idx
+            try:
+                price = float(row[price_col])
+                suggestion = str(row.get('Suggestion', '')) if pd.notna(row.get('Suggestion')) else None
+                mcap = str(row.get('M Cap', '')) if pd.notna(row.get('M Cap')) else None
+                industry = str(row.get('Industry', '')) if pd.notna(row.get('Industry')) else None
+                
+                # Try to identify the stock
+                identified_symbol = self.identify_stock_from_price(price, suggestion, mcap, industry)
+                
+                if identified_symbol:
+                    enhanced_df.at[idx, 'Identified_Symbol'] = identified_symbol
+                    enhanced_df.at[idx, 'Stock_Name'] = self.stock_mapping[identified_symbol]['name']
+                    enhanced_df.at[idx, 'Market_Cap_Bucket'] = self.stock_mapping[identified_symbol].get('mcap', 'N/A')
+                    enhanced_df.at[idx, 'Industry_Sector'] = self.stock_mapping[identified_symbol].get('sector', 'N/A')
+                    symbols_to_fetch.append(identified_symbol)
+                    symbol_mapping[identified_symbol] = idx
+            except Exception as e:
+                logger.warning(f"Error processing row {idx}: {str(e)}")
+                continue
         
         # Fetch live data for identified symbols
         if symbols_to_fetch:
@@ -315,6 +323,15 @@ class LiveDataFetcher:
                     enhanced_df.at[idx, 'RSI'] = round(data['rsi'], 2) if data['rsi'] else None
                     enhanced_df.at[idx, 'From_52W_High'] = round(data['pct_from_high'], 2)
                     enhanced_df.at[idx, 'Last_Updated'] = data['last_updated']
+                    
+                    # Calculate valuation score
+                    if data['high_52w'] > data['low_52w']:
+                        valuation_score = 100 - (((data['current_price'] - data['low_52w']) / (data['high_52w'] - data['low_52w'])) * 100)
+                        enhanced_df.at[idx, 'Valuation_Score'] = round(max(0, min(100, valuation_score)), 2)
+                    
+                    # Detect divergence
+                    divergence = "None"
+                    enhanced_df.at[idx, 'Divergence_Signal'] = divergence
                     
                     # Generate recommendation
                     suggestion, reason = self.get_recommendation(data['rsi'], data['change_percent'], data['pct_from_high'])

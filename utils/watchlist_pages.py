@@ -236,25 +236,32 @@ class WatchlistPages:
                     filtered_df = filtered_df[filtered_df['Stock_Name'].notna()].copy()
         
         # Prepare display dataframe with optimized column ordering (no duplicates)
-        # Select only the most important columns to avoid clutter
+        # Select core analysis columns in logical order
         display_columns = []
         
-        # Core analysis columns (live data)
-        core_columns = ['Stock_Name', 'Identified_Symbol', 'Live_Price', 'Day_High', 'Day_Low', 
-                       'High_52W', 'Low_52W', 'Live_Change_Percent', 'RSI', 'From_52W_High', 
-                       'Suggestion', 'Reason']
+        # Core live data columns - prioritized order
+        core_columns = [
+            'Stock_Name', 'Identified_Symbol', 'Live_Price', 'Live_Change_Percent',
+            'Day_High', 'Day_Low', 'High_52W', 'Low_52W', 'From_52W_High',
+            'RSI', 'Valuation_Score', 'Divergence_Signal', 
+            'Market_Cap_Bucket', 'Industry_Sector',
+            'Suggestion', 'Reason', 'Last_Updated'
+        ]
         
         for col in core_columns:
             if col in filtered_df.columns:
                 display_columns.append(col)
         
-        # Add only essential original columns (avoid duplicates like Price, Stock Name, etc)
+        # Exclude duplicate/redundant columns from original data
+        exclude_cols = {'Stock Name', 'Price', 'P Close', 'M Cap', 'Industry', 'D Change (%)', 
+                       'Live_Change', 'Identified_Symbol', 'Last_Updated', 'Unnamed: 0'}
+        
+        # Add any other relevant numeric columns (but avoid duplicates)
         for col in filtered_df.columns:
-            if col not in display_columns and col not in ['Stock Name', 'Price', 'P Close', 'M Cap', 'Industry', 'D Change (%)', 
-                                                           'Live_Change', 'Identified_Symbol', 'Last_Updated'] and not col.startswith('Unnamed'):
+            if col not in display_columns and not any(exc in col for exc in exclude_cols) and not col.startswith('Unnamed'):
                 display_columns.append(col)
         
-        # Filter to existing columns
+        # Filter to existing columns only
         display_columns = [col for col in display_columns if col in filtered_df.columns]
         display_df = filtered_df[display_columns]
         
@@ -268,25 +275,35 @@ class WatchlistPages:
         if 'Identified_Symbol' in display_df.columns:
             column_config['Identified_Symbol'] = st.column_config.TextColumn("📊 Symbol", width="small")
         if 'Live_Price' in display_df.columns:
-            column_config['Live_Price'] = st.column_config.NumberColumn("💰 Price", format="₹%.2f")
+            column_config['Live_Price'] = st.column_config.NumberColumn("💰 Live Price", format="₹%.2f")
+        if 'Live_Change_Percent' in display_df.columns:
+            column_config['Live_Change_Percent'] = st.column_config.NumberColumn("📊 Change %", format="%.2f%%")
         if 'Day_High' in display_df.columns:
             column_config['Day_High'] = st.column_config.NumberColumn("📈 Day High", format="₹%.2f")
         if 'Day_Low' in display_df.columns:
             column_config['Day_Low'] = st.column_config.NumberColumn("📉 Day Low", format="₹%.2f")
         if 'High_52W' in display_df.columns:
-            column_config['High_52W'] = st.column_config.NumberColumn("⬆️ 52w High", format="₹%.2f")
+            column_config['High_52W'] = st.column_config.NumberColumn("📊 52w High", format="₹%.2f")
         if 'Low_52W' in display_df.columns:
-            column_config['Low_52W'] = st.column_config.NumberColumn("⬇️ 52w Low", format="₹%.2f")
-        if 'Live_Change_Percent' in display_df.columns:
-            column_config['Live_Change_Percent'] = st.column_config.NumberColumn("📊 Change %", format="%.2f%%")
-        if 'RSI' in display_df.columns:
-            column_config['RSI'] = st.column_config.NumberColumn("📈 RSI", format="%.2f")
+            column_config['Low_52W'] = st.column_config.NumberColumn("📊 52w Low", format="₹%.2f")
         if 'From_52W_High' in display_df.columns:
-            column_config['From_52W_High'] = st.column_config.NumberColumn("📉 From High %", format="%.2f%%")
+            column_config['From_52W_High'] = st.column_config.NumberColumn("📉 % from High", format="%.2f%%")
+        if 'RSI' in display_df.columns:
+            column_config['RSI'] = st.column_config.NumberColumn("📈 RSI (14)", format="%.2f")
+        if 'Valuation_Score' in display_df.columns:
+            column_config['Valuation_Score'] = st.column_config.NumberColumn("💎 Valuation", format="%.0f/100")
+        if 'Divergence_Signal' in display_df.columns:
+            column_config['Divergence_Signal'] = st.column_config.TextColumn("🔀 Divergence", width="small")
+        if 'Market_Cap_Bucket' in display_df.columns:
+            column_config['Market_Cap_Bucket'] = st.column_config.TextColumn("🏪 Market Cap", width="small")
+        if 'Industry_Sector' in display_df.columns:
+            column_config['Industry_Sector'] = st.column_config.TextColumn("🏭 Sector", width="medium")
         if 'Suggestion' in display_df.columns:
             column_config['Suggestion'] = st.column_config.TextColumn("⭐ Suggestion", width="small")
         if 'Reason' in display_df.columns:
-            column_config['Reason'] = st.column_config.TextColumn("💡 Reasoning", width="large")
+            column_config['Reason'] = st.column_config.TextColumn("💡 Reason & Details", width="large")
+        if 'Last_Updated' in display_df.columns:
+            column_config['Last_Updated'] = st.column_config.TextColumn("🕐 Updated", width="small")
         
         # Display enhanced table
         st.dataframe(
