@@ -666,15 +666,15 @@ def render_watchlist_navigation():
         try:
             if file_path.endswith('.csv'):
                 df = pd.read_csv(file_path)
-                if not df.empty:
+                if df is not None and len(df) > 0:
                     excel_file_path = file_path
                     break
             else:
                 df = pd.read_excel(file_path)
-                if not df.empty:
+                if df is not None and len(df) > 0:
                     excel_file_path = file_path
                     break
-        except:
+        except Exception as load_err:
             continue
     
     if excel_file_path is None:
@@ -685,11 +685,18 @@ def render_watchlist_navigation():
         watchlist_pages = WatchlistPages(excel_file_path)
         
         # Check if a specific watchlist is selected
-        if 'selected_watchlist' in st.session_state:
-            watchlist_pages.render_sector_watchlist(st.session_state.selected_watchlist)
+        if 'selected_watchlist' in st.session_state and st.session_state.selected_watchlist:
+            try:
+                watchlist_pages.render_sector_watchlist(st.session_state.selected_watchlist)
+            except Exception as render_err:
+                st.error(f"Error displaying watchlist: {str(render_err)}")
         else:
-            watchlist_pages.render_watchlist_overview()
+            try:
+                watchlist_pages.render_watchlist_overview()
+            except Exception as overview_err:
+                st.error(f"Error loading watchlist overview: {str(overview_err)}")
             
     except Exception as e:
         st.error(f"Error loading watchlist data: {str(e)}")
-        st.info("Please ensure the Excel/CSV file is properly formatted.")
+        import traceback
+        st.write(traceback.format_exc())
