@@ -585,8 +585,8 @@ class WatchlistPages:
                     pass
             
             # Market cap distribution
-            mcap_col = [col for col in df.columns if 'cap' in col.lower() and df[col].dtype == 'object']
-            if mcap_col:
+            mcap_col = [col for col in df.columns if 'cap' in col.lower() and str(df[col].dtype) == 'object']
+            if len(mcap_col) > 0:
                 mcap_counts = df[mcap_col[0]].value_counts()
                 st.write(f"\n{mcap_col[0]} Distribution:")
                 for cap, count in mcap_counts.items():
@@ -601,14 +601,20 @@ class WatchlistPages:
             change_col = None
             
             for col in df.columns:
-                if 'price' in col.lower() and df[col].dtype in ['float64', 'int64']:
-                    price_col = col
-                    break
+                try:
+                    if 'price' in col.lower() and str(df[col].dtype) in ['float64', 'int64']:
+                        price_col = col
+                        break
+                except:
+                    continue
             
             for col in df.columns:
-                if 'change' in col.lower() and '%' in col and df[col].dtype in ['float64', 'int64']:
-                    change_col = col
-                    break
+                try:
+                    if 'change' in col.lower() and '%' in str(col) and str(df[col].dtype) in ['float64', 'int64']:
+                        change_col = col
+                        break
+                except:
+                    continue
             
             if price_col:
                 avg_price = df[price_col].mean()
@@ -624,10 +630,16 @@ class WatchlistPages:
                 st.write(f"• Negative performers: {negative_change}")
                 
                 if positive_change > 0:
-                    best_performer = df.loc[df[change_col].idxmax()]
-                    stock_name_col = [col for col in df.columns if 'name' in col.lower()]
-                    if stock_name_col:
-                        st.write(f"• Best performer: {best_performer[stock_name_col[0]]} ({best_performer[change_col]:.2f}%)")
+                    try:
+                        best_idx = df[change_col].idxmax()
+                        best_performer = df.loc[best_idx]
+                        stock_name_col = [col for col in df.columns if 'name' in col.lower()]
+                        if len(stock_name_col) > 0:
+                            name_val = best_performer[stock_name_col[0]]
+                            change_val = best_performer[change_col]
+                            st.write(f"• Best performer: {name_val} ({change_val:.2f}%)")
+                    except:
+                        pass
         
         # Top performers table
         if change_col:

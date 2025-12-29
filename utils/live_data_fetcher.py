@@ -286,7 +286,9 @@ class LiveDataFetcher:
                 continue
             
             try:
-                price = float(row[price_col])
+                # Clean price value (remove commas and spaces)
+                price_str = str(row[price_col]).strip().replace(',', '')
+                price = float(price_str)
                 suggestion = str(row.get('Suggestion', '')) if pd.notna(row.get('Suggestion')) else None
                 mcap = str(row.get('M Cap', '')) if pd.notna(row.get('M Cap')) else None
                 industry = str(row.get('Industry', '')) if pd.notna(row.get('Industry')) else None
