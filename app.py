@@ -765,6 +765,29 @@ if st.session_state.stock_data is not None:
             help="Bullish: Price lower low, RSI higher low (Reversal up) | Bearish: Price higher high, RSI lower high (Reversal down)"
         )
     
+    with col3:
+        # Calculate valuation metrics
+        percent_from_high = ((current_price / high_period) - 1) * 100
+        percent_from_low = ((current_price / low_period) - 1) * 100
+        price_position = ((current_price - low_period) / (high_period - low_period)) * 100 if high_period != low_period else 50
+        
+        st.metric(
+            label="💎 % from 52W High",
+            value=f"{percent_from_high:.2f}%",
+            help=f"Negative values mean discount from high (better value)"
+        )
+    
+    with col4:
+        # Valuation score: 0-100 where higher is better value (lower price in range)
+        valuation_score = max(0, min(100, 100 - price_position))
+        valuation_label = "🔴 Expensive" if valuation_score < 33 else "🟡 Fair" if valuation_score < 66 else "🟢 Undervalued"
+        
+        st.metric(
+            label="📊 Valuation Score",
+            value=f"{valuation_score:.0f}/100 {valuation_label}",
+            help="0=Expensive (near high), 100=Undervalued (near low)"
+        )
+    
     st.markdown("---")
     
     # Enhanced Charts section with modern tabs
