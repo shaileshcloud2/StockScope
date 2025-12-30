@@ -654,11 +654,11 @@ class WatchlistPages:
 def render_watchlist_navigation():
     """Render navigation for watchlist pages with CSV support"""
     
-    # Try different file formats
+    # Try different file formats (prioritize Nifty v2)
     files_to_try = [
-        "attached_assets/Holding_watchlist_All_stock_1766847674176.csv",
         "attached_assets/Nifty_watchlist_v2_1766847674173.xlsm",
-        "attached_assets/Nifty_watchlist_1753452068694.xlsm"
+        "attached_assets/Nifty_watchlist_1753452068694.xlsm",
+        "attached_assets/Holding_watchlist_All_stock_1766847674176.csv"
     ]
     
     excel_file_path = None
