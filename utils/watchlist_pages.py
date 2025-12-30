@@ -440,7 +440,7 @@ class WatchlistPages:
         
         # Sector/Industry analysis if available
         sector_col = [col for col in df.columns if 'sector' in col.lower() or 'industry' in col.lower()]
-        if sector_col and price_col:
+        if len(sector_col) > 0 and price_col is not None:
             st.subheader("Sector-wise Analysis")
             sector_data = df.groupby(sector_col[0])[price_col].agg(['mean', 'count']).reset_index()
             sector_data = sector_data[sector_data['count'] >= 2]  # Only sectors with 2+ stocks
@@ -518,25 +518,25 @@ class WatchlistPages:
         mcap_col = mcap_cols[0] if mcap_cols else None
         
         # Get filter values with defaults
-        if price_col and not df[price_col].empty:
+        if price_col is not None and len(df[price_col].dropna()) > 0:
             price_min = st.session_state.get('price_min', float(df[price_col].min()))
             price_max = st.session_state.get('price_max', float(df[price_col].max()))
             mask = (filtered_df[price_col] >= price_min) & (filtered_df[price_col] <= price_max)
             filtered_df = filtered_df.loc[mask].copy()
         
-        if change_col and not df[change_col].empty:
+        if change_col is not None and len(df[change_col].dropna()) > 0:
             change_min = st.session_state.get('change_min', -100.0)
             change_max = st.session_state.get('change_max', 100.0)
             mask = (filtered_df[change_col] >= change_min) & (filtered_df[change_col] <= change_max)
             filtered_df = filtered_df.loc[mask].copy()
         
-        if mcap_cols:
+        if len(mcap_cols) > 0:
             mcap_filter = st.session_state.get('mcap_filter', 'All')
             if mcap_filter != 'All':
                 mask = filtered_df[mcap_cols[0]] == mcap_filter
                 filtered_df = filtered_df.loc[mask].copy()
         
-        if suggestion_cols:
+        if len(suggestion_cols) > 0:
             suggestion_filter = st.session_state.get('suggestion_filter', 'All')
             if suggestion_filter != 'All':
                 mask = filtered_df[suggestion_cols[0]] == suggestion_filter
@@ -585,7 +585,7 @@ class WatchlistPages:
                     pass
             
             # Market cap distribution
-            mcap_col = [col for col in df.columns if 'cap' in col.lower() and str(df[col].dtype) == 'object']
+            mcap_col = [col for col in df.columns if 'cap' in col.lower() and str(df[col].dtype) in ['object', 'float64', 'int64']]
             if len(mcap_col) > 0:
                 mcap_counts = df[mcap_col[0]].value_counts()
                 st.write(f"\n{mcap_col[0]} Distribution:")
