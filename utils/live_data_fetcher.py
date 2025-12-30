@@ -289,9 +289,19 @@ class LiveDataFetcher:
                 # Clean price value (remove commas and spaces)
                 price_str = str(row[price_col]).strip().replace(',', '')
                 price = float(price_str)
-                suggestion = str(row.get('Suggestion', '')) if pd.notna(row.get('Suggestion')) else None
-                mcap = str(row.get('M Cap', '')) if pd.notna(row.get('M Cap')) else None
-                industry = str(row.get('Industry', '')) if pd.notna(row.get('Industry')) else None
+                
+                # Safe extraction of values from row
+                suggestion = None
+                if 'Suggestion' in df.columns and pd.notna(row['Suggestion']):
+                    suggestion = str(row['Suggestion']).strip()
+                
+                mcap = None
+                if 'Market_Cap' in df.columns and pd.notna(row['Market_Cap']):
+                    mcap = str(row['Market_Cap']).strip()
+                
+                industry = None
+                if 'Industry' in df.columns and pd.notna(row['Industry']):
+                    industry = str(row['Industry']).strip()
                 
                 # Try to identify the stock
                 identified_symbol = self.identify_stock_from_price(price, suggestion, mcap, industry)

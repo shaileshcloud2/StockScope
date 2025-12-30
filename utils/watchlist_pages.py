@@ -557,7 +557,7 @@ class WatchlistPages:
             
             # Find suggestion column
             suggestion_col = [col for col in df.columns if 'suggestion' in col.lower()]
-            if suggestion_col:
+            if len(suggestion_col) > 0:
                 suggestion_counts = df[suggestion_col[0]].value_counts()
                 for signal, count in suggestion_counts.items():
                     percentage = (count / len(df)) * 100
@@ -568,7 +568,7 @@ class WatchlistPages:
             price_cols = [col for col in df.columns if 'price' in str(col).lower()]
             high_cols = [col for col in df.columns if '52' in str(col).lower() and 'high' in str(col).lower()]
             
-            if price_cols and high_cols:
+            if len(price_cols) > 0 and len(high_cols) > 0:
                 try:
                     price_col = price_cols[0]
                     high_col = high_cols[0]
