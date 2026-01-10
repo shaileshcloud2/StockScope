@@ -10,6 +10,7 @@ from utils.stock_database import search_stocks, get_popular_stocks, get_all_sect
 from utils.watchlist_pages import render_watchlist_navigation
 from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education, calculate_rsi, detect_divergence
 from utils.market_analysis_report import generate_market_analysis_report, render_pattern_chart
+from utils.ath_breakout_report import generate_ath_breakout_report, render_ath_chart
 import io
 
 # Page configuration
@@ -275,6 +276,41 @@ if st.session_state.get('page_mode') == 'lifetime_high_report':
                 st.markdown("---")
     else:
         st.warning("No stocks currently matching the 'Near Lifetime High + Cup & Handle' criteria.")
+    
+    st.stop()
+
+# Check if we should render ATH breakout report
+if st.session_state.get('page_mode') == 'ath_breakout_report':
+    with st.sidebar:
+        if st.button("← Back to Main Analysis", use_container_width=True):
+            st.session_state.page_mode = 'main'
+            st.rerun()
+    
+    st.markdown('<h1 class="main-header">🚀 ATH Breakout Report</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Stocks breaking above 52W and All-Time Highs</p>', unsafe_allow_html=True)
+    
+    with st.spinner("🔍 Scanning for ATH breakouts..."):
+        report_df = generate_ath_breakout_report()
+    
+    if not report_df.empty:
+        st.success(f"Found {len(report_df)} stocks matching criteria!")
+        
+        for idx, row in report_df.iterrows():
+            with st.container():
+                st.markdown(f"### {row['Name']} ({row['Symbol']})")
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Current Price", row['Current Price'])
+                col2.metric("All-Time High", row['All-Time High'])
+                col3.metric("Volume", row['Volume'])
+                col4.metric("Market Cap (Cr)", row['Market Cap (Cr)'])
+                
+                st.info(f"🎯 **Suggestion:** {row['Suggestion']} | **Reason:** {row['Reason']}")
+                
+                # Render chart
+                st.plotly_chart(render_ath_chart(row['df'], row['Symbol']), use_container_width=True)
+                st.markdown("---")
+    else:
+        st.warning("No stocks currently matching the 'ATH Breakout' criteria.")
     
     st.stop()
 
@@ -573,6 +609,10 @@ with st.sidebar:
 
     if st.button("🏆 Lifetime High Analysis", use_container_width=True, help="Stocks near lifetime high with Cup & Handle pattern"):
         st.session_state.page_mode = 'lifetime_high_report'
+        st.rerun()
+
+    if st.button("🚀 ATH Breakout Analysis", use_container_width=True, help="Stocks breaking above All-Time Highs"):
+        st.session_state.page_mode = 'ath_breakout_report'
         st.rerun()
     
     st.markdown("### 📊 Excel Watchlists")
