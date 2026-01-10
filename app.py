@@ -709,6 +709,9 @@ if st.session_state.stock_data is not None:
 
     h1y, l1y, h5y, l5y, latest_price = get_standard_metrics(symbol)
     
+    # Get period label for display
+    period_label = st.session_state.get('selected_period_label', '52W')
+
     # Use standard metrics if available, otherwise fallback to period-based
     display_high = h1y if period_label == "1 Year" else (h5y if "5 Year" in period_label else high_period)
     display_low = l1y if period_label == "1 Year" else (l5y if "5 Year" in period_label else low_period)
@@ -726,9 +729,6 @@ if st.session_state.stock_data is not None:
     
     # Detect divergence
     divergence_signal = detect_divergence(stock_data)
-    
-    # Get period label for display
-    period_label = st.session_state.get('selected_period_label', '52W')
     
     # Display metrics in enhanced grid
     col1, col2, col3, col4 = st.columns(4)
