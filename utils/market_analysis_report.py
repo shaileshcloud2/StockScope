@@ -14,9 +14,12 @@ def detect_cup_and_handle(df):
     all_time_high = np.max(prices)
     current_price = prices[-1]
     
-    # Check if we are near lifetime high (within 2%)
-    if current_price < all_time_high * 0.98:
-        return False, "Not near lifetime high"
+    # Check if we are near lifetime high (between 2% below to 5% above)
+    lower_bound = all_time_high * 0.98
+    upper_bound = all_time_high * 1.05
+    
+    if not (current_price >= lower_bound and current_price <= upper_bound):
+        return False, f"Price {current_price:.2f} outside range [{lower_bound:.2f}, {upper_bound:.2f}]"
         
     # Heuristic-based detection for long-term patterns
     recent_prices = prices[:-8]
@@ -35,13 +38,12 @@ def detect_cup_and_handle(df):
     # Handle check: Most recent prices (last few weeks/months)
     handle_prices = prices[-8:]
     handle_max = np.max(handle_prices)
-    if handle_max > prices[prev_high_idx] * 1.1:
+    if handle_max > prices[prev_high_idx] * 1.15:
          return False, "Handle level too high"
          
-    return True, "Long-term Cup & Handle pattern detected near Lifetime High"
+    return True, "Long-term Cup & Handle pattern detected near Lifetime High range"
 
 def generate_market_analysis_report():
-    # Expanded list for better coverage
     symbols = [
         "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
         "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "LTIM.NS",
@@ -54,18 +56,19 @@ def generate_market_analysis_report():
     for symbol in symbols:
         try:
             ticker = yf.Ticker(symbol)
-            # Fetch Max data for true Lifetime High and use Monthly intervals for long-term pattern
             df = ticker.history(period="max", interval="1mo")
-            if df.empty or len(df) < 48: # Need at least 4 years of monthly data
-                # Try Weekly if Monthly is too sparse or short
+            if df.empty or len(df) < 48:
                 df = ticker.history(period="max", interval="1wk")
                 if df.empty or len(df) < 100: continue
             
+            if df.index.tz is not None:
+                df.index = df.index.tz_localize(None)
+
             current_price = df["Close"].iloc[-1]
             all_time_high = df["High"].max()
             
-            # Within 2% of true Lifetime High
-            if current_price >= all_time_high * 0.98:
+            # Updated range: 2% below to 5% above Lifetime High
+            if current_price >= (all_time_high * 0.98) and current_price <= (all_time_high * 1.05):
                 is_pattern, reason = detect_cup_and_handle(df)
                 if is_pattern:
                     info = ticker.info
@@ -82,7 +85,7 @@ def generate_market_analysis_report():
                         "RSI": f"{rsi:.1f}",
                         "Volume": formatted_vol,
                         "PE": info.get("trailingPE", "N/A"),
-                        "Suggestion": "Strong BUY on Breakout",
+                        "Suggestion": "Breakout Momentum BUY",
                         "Reason": reason,
                         "df": df
                     })
@@ -92,8 +95,7 @@ def generate_market_analysis_report():
     return pd.DataFrame(report_data)
 
 def render_pattern_chart(df, symbol):
-    # Show more context for long term patterns
-    plot_df = df.tail(120) # Show last 10 years of monthly or ~2 years of weekly
+    plot_df = df.tail(120)
     fig = go.Figure(data=[go.Candlestick(x=plot_df.index,
                 open=plot_df["Open"],
                 high=plot_df["High"],
