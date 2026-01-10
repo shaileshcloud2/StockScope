@@ -29,7 +29,7 @@ The pattern is detected using a multi-step heuristic approach on the monthly/wee
 
 ### C. Breakout Identification
 - **Range Verification**: The "Handle" must be forming within the 2% below to 5% above ATH range.
-- **Momentum Check**: RSI is calculated to ensure the stock is not excessively overextended (RSI > 80) but maintains bullish momentum (RSI > 50).
+- **Momentum Check**: RSI is calculated for informational purposes to gauge momentum.
 
 ## 5. Output Metrics
 - **RSI**: Relative Strength Index to gauge momentum.
