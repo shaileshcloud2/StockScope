@@ -679,10 +679,42 @@ if st.session_state.stock_data is not None:
     price_change = current_price - prev_price
     price_change_pct = (price_change / prev_price) * 100 if prev_price != 0 else 0
     
-    # Calculate additional metrics
+    # Calculate period-specific metrics
     high_period = stock_data['High'].max()
     low_period = stock_data['Low'].min()
-    avg_volume = stock_data['Volume'].mean()
+    
+    # Calculate fixed 1-Year and 5-Year metrics if possible for comparison/consistency
+    # We fetch a slightly larger dataset to ensure these are always accurate regardless of selected period
+    @st.cache_data(ttl=3600)
+    def get_standard_metrics(symbol):
+        try:
+            full_data = data_fetcher.fetch_stock_data(symbol, "5y")
+            if full_data is not None:
+                # 1 Year High/Low
+                one_year_ago = datetime.now() - timedelta(days=365)
+                df_1y = full_data[full_data.index >= one_year_ago]
+                h1y = df_1y['High'].max() if not df_1y.empty else full_data['High'].max()
+                l1y = df_1y['Low'].min() if not df_1y.empty else full_data['Low'].min()
+                
+                # 5 Year High/Low
+                h5y = full_data['High'].max()
+                l5y = full_data['Low'].min()
+                
+                # Absolute current price (latest available)
+                latest_price = full_data['Close'].iloc[-1]
+                return h1y, l1y, h5y, l5y, latest_price
+        except:
+            pass
+        return None, None, None, None, None
+
+    h1y, l1y, h5y, l5y, latest_price = get_standard_metrics(symbol)
+    
+    # Use standard metrics if available, otherwise fallback to period-based
+    display_high = h1y if period_label == "1 Year" else (h5y if "5 Year" in period_label else high_period)
+    display_low = l1y if period_label == "1 Year" else (l5y if "5 Year" in period_label else low_period)
+    current_price = latest_price if latest_price is not None else stock_data['Close'].iloc[-1]
+    
+    prev_price = stock_data['Close'].iloc[-2] if len(stock_data) > 1 else current_price
     volume_change = ((stock_data['Volume'].iloc[-1] / stock_data['Volume'].iloc[-2] - 1) * 100) if len(stock_data) > 1 else 0
     
     # Price performance metrics
@@ -722,15 +754,15 @@ if st.session_state.stock_data is not None:
     with col3:
         st.metric(
             label=f"📈 {period_label} High",
-            value=f"₹{high_period:.2f}",
-            help=f"Distance from high: {((current_price/high_period - 1) * 100):.1f}%"
+            value=f"₹{display_high:.2f}",
+            help=f"Distance from high: {((current_price/display_high - 1) * 100):.1f}%"
         )
     
     with col4:
         st.metric(
             label=f"📉 {period_label} Low",
-            value=f"₹{low_period:.2f}",
-            help=f"Distance from low: {((current_price/low_period - 1) * 100):.1f}%"
+            value=f"₹{display_low:.2f}",
+            help=f"Distance from low: {((current_price/display_low - 1) * 100):.1f}%"
         )
     
     # Additional metrics row with RSI and Divergence
@@ -807,9 +839,9 @@ if st.session_state.stock_data is not None:
     
     with col3:
         # Calculate valuation metrics
-        percent_from_high = ((current_price / high_period) - 1) * 100
-        percent_from_low = ((current_price / low_period) - 1) * 100
-        price_position = ((current_price - low_period) / (high_period - low_period)) * 100 if high_period != low_period else 50
+        percent_from_high = ((current_price / display_high) - 1) * 100
+        percent_from_low = ((current_price / display_low) - 1) * 100
+        price_position = ((current_price - display_low) / (display_high - display_low)) * 100 if display_high != display_low else 50
         
         st.metric(
             label="💎 % from 52W High",
