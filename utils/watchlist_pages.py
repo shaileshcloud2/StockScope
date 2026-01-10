@@ -55,6 +55,10 @@ class WatchlistPages:
                            if name not in ['Sheet1', 'Sheet9', 'Table'] and 
                            self.analysis['sheets_info'].get(name, {}).get('rows', 0) > 5]
         
+        if not meaningful_sheets:
+            st.info("No stock categories found in the uploaded file.")
+            return
+
         cols = st.columns(min(3, len(meaningful_sheets)))
         for idx, sheet_name in enumerate(meaningful_sheets):
             col = cols[idx % 3]

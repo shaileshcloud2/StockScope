@@ -9,6 +9,7 @@ from utils.chart_utils import create_price_chart, create_volume_chart, detect_go
 from utils.stock_database import search_stocks, get_popular_stocks, get_all_sectors, get_stocks_by_sector
 from utils.watchlist_pages import render_watchlist_navigation
 from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education, calculate_rsi, detect_divergence
+from utils.market_analysis_report import generate_market_analysis_report, render_pattern_chart
 import io
 
 # Page configuration
@@ -241,6 +242,41 @@ data_fetcher = get_data_fetcher()
 
 if 'stock_fetcher' not in st.session_state:
     st.session_state.stock_fetcher = data_fetcher
+
+# Check if we should render lifetime high report
+if st.session_state.get('page_mode') == 'lifetime_high_report':
+    with st.sidebar:
+        if st.button("← Back to Main Analysis", use_container_width=True):
+            st.session_state.page_mode = 'main'
+            st.rerun()
+    
+    st.markdown('<h1 class="main-header">🏆 Lifetime High Report</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Stocks within 2% of Lifetime High with Cup & Handle Pattern</p>', unsafe_allow_html=True)
+    
+    with st.spinner("🔍 Scanning for high-potential patterns..."):
+        report_df = generate_market_analysis_report()
+    
+    if not report_df.empty:
+        st.success(f"Found {len(report_df)} stocks matching criteria!")
+        
+        for idx, row in report_df.iterrows():
+            with st.container():
+                st.markdown(f"### {row['Name']} ({row['Symbol']})")
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Current Price", row['Current Price'])
+                col2.metric("RSI", row['RSI'])
+                col3.metric("Volume", row['Volume'])
+                col4.metric("PE", row['PE'])
+                
+                st.info(f"🎯 **Suggestion:** {row['Suggestion']} | **Reason:** {row['Reason']}")
+                
+                # Render pattern chart
+                st.plotly_chart(render_pattern_chart(row['df'], row['Symbol']), use_container_width=True)
+                st.markdown("---")
+    else:
+        st.warning("No stocks currently matching the 'Near Lifetime High + Cup & Handle' criteria.")
+    
+    st.stop()
 
 # Check if we should render market report
 if st.session_state.get('page_mode') == 'market_report':
@@ -533,6 +569,10 @@ with st.sidebar:
     
     if st.button("🎯 NSE 500 Market Report", use_container_width=True, help="Analyze NSE 500 stocks for Golden/Death crosses in past week"):
         st.session_state.page_mode = 'market_report'
+        st.rerun()
+
+    if st.button("🏆 Lifetime High Analysis", use_container_width=True, help="Stocks near lifetime high with Cup & Handle pattern"):
+        st.session_state.page_mode = 'lifetime_high_report'
         st.rerun()
     
     st.markdown("### 📊 Excel Watchlists")
