@@ -682,6 +682,7 @@ if st.session_state.stock_data is not None:
     # Calculate period-specific metrics
     high_period = stock_data['High'].max()
     low_period = stock_data['Low'].min()
+    avg_volume = stock_data['Volume'].mean()
     
     # Calculate fixed 1-Year and 5-Year metrics if possible for comparison/consistency
     # We fetch a slightly larger dataset to ensure these are always accurate regardless of selected period
