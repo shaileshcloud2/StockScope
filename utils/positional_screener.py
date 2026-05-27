@@ -301,6 +301,7 @@ def score_stock(row, fundamentals, sector_scores, nifty500_ret):
     sym    = row["symbol"]
     name   = row.get("name", sym)
     sector = row.get("sector", "Unknown")
+    cap    = row.get("cap", "—")
 
     try:
         ticker = yf.Ticker(f"{sym}.NS")
@@ -314,13 +315,16 @@ def score_stock(row, fundamentals, sector_scores, nifty500_ret):
         lows    = hist["Low"].tolist()
         volumes = hist["Volume"].tolist()
 
-        cmp     = closes[-1]
-        sma50   = calc_sma(closes, 50)
-        sma200  = calc_sma(closes, 200)
-        rsi     = calc_rsi(closes)
-        hh_hl   = check_hh_hl(closes)
+        cmp        = closes[-1]
+        prev_close = closes[-2] if len(closes) > 1 else cmp
+        change_pct = round(((cmp - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
+
+        sma50     = calc_sma(closes, 50)
+        sma200    = calc_sma(closes, 200)
+        rsi       = calc_rsi(closes)
+        hh_hl     = check_hh_hl(closes)
         vol_ratio = calc_vol_ratio(closes, volumes)
-        atr     = calc_atr(highs, lows, closes)
+        atr       = calc_atr(highs, lows, closes)
 
         stock_ret = ((cmp / closes[0]) - 1) * 100
         rel_str   = round(stock_ret - nifty500_ret, 2)
@@ -339,7 +343,9 @@ def score_stock(row, fundamentals, sector_scores, nifty500_ret):
             "symbol":       sym,
             "name":         name,
             "sector":       sector,
+            "cap":          cap,
             "cmp":          round(cmp, 2),
+            "changePct":    change_pct,
             "sma50":        sma50,
             "sma200":       sma200,
             "rsi":          rsi,
@@ -358,12 +364,15 @@ def score_stock(row, fundamentals, sector_scores, nifty500_ret):
             "roe":          fd.get("roe_pct", 0),
             "de":           fd.get("de_ratio", 0),
             "revGrowth":    fd.get("rev_growth_pct", 0),
+            "patGrowth":    fd.get("pat_growth_pct", 0),
             "promoter":     fd.get("promoter_pct", 0),
+            "fundUpdated":  fd.get("last_updated", ""),
             "trendDet":     t_det,
             "momDet":       m_det,
             "fundDet":      f_det,
             "rrDet":        r_det,
             "dataPoints":   len(closes),
+            "relStr":       rel_str,
         }
 
     except Exception as e:
