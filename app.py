@@ -11,6 +11,9 @@ from utils.watchlist_pages import render_watchlist_navigation
 from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education, calculate_rsi, detect_divergence
 from utils.market_analysis_report import generate_market_analysis_report, render_pattern_chart
 from utils.ath_breakout_report import generate_ath_breakout_report, render_ath_chart
+from utils.positional_screener import (
+    run_positional_screener, load_symbols, get_signal_badge
+)
 import io
 
 # Page configuration
@@ -314,6 +317,193 @@ if st.session_state.get('page_mode') == 'ath_breakout_report':
     
     st.stop()
 
+# Check if we should render positional screener
+if st.session_state.get('page_mode') == 'positional_screener':
+    with st.sidebar:
+        if st.button("← Back to Main Analysis", use_container_width=True):
+            st.session_state.page_mode = 'main'
+            st.rerun()
+
+    st.markdown('<h1 class="main-header">🎯 Positional Screener</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">NSE 500 Multi-Factor Scoring: Trend · Momentum · Fundamentals · Sector · Risk:Reward</p>', unsafe_allow_html=True)
+
+    # ── Filters row ───────────────────────────────────────────────
+    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
+    with col1:
+        min_score = st.slider("Min Score", 40, 90, 60, 5, help="Minimum composite score out of 100")
+    with col2:
+        signal_filter = st.selectbox("Signal", ["All", "STRONG BUY", "BUY", "WATCH"], index=0)
+    with col3:
+        all_sectors = ["All"] + sorted(set(r.get("sector", "Unknown") for r in load_symbols()))
+        sector_filter = st.selectbox("Sector", all_sectors, index=0)
+    with col4:
+        max_stocks = st.selectbox("Stocks to scan", [50, 100, 200, 500], index=1,
+                                  help="Scanning more stocks takes longer")
+    with col5:
+        run_scan = st.button("🔍 Run Screener", use_container_width=True, type="primary")
+
+    st.markdown("""
+    <div class="feature-highlight">
+        <strong>📊 Scoring Breakdown (100 pts):</strong>
+        Trend <strong>25</strong> (200 DMA + Golden Cross + HH/HL) &nbsp;|&nbsp;
+        Momentum <strong>20</strong> (RSI + vs Nifty 500 + Volume) &nbsp;|&nbsp;
+        Fundamentals <strong>25</strong> (PE/PB/ROE/D·E/Promoter) &nbsp;|&nbsp;
+        Sector <strong>15</strong> (Nifty sector index 1Y) &nbsp;|&nbsp;
+        Risk:Reward <strong>15</strong> (Support + ATR-based SL/Target)
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    if run_scan or st.session_state.get('positional_results') is not None:
+        if run_scan:
+            st.session_state.pop('positional_results', None)
+
+        if 'positional_results' not in st.session_state or run_scan:
+            progress_bar = st.progress(0)
+            status_text  = st.empty()
+
+            with st.spinner(""):
+                results_df = run_positional_screener(
+                    min_score=min_score,
+                    signal_filter=signal_filter,
+                    sector_filter=sector_filter,
+                    max_stocks=max_stocks,
+                    progress_bar=progress_bar,
+                    status_text=status_text,
+                )
+            progress_bar.empty()
+            status_text.empty()
+            st.session_state.positional_results = results_df
+        else:
+            results_df = st.session_state.positional_results
+
+        if results_df.empty:
+            st.warning("No stocks matched the criteria. Try lowering the minimum score or changing filters.")
+        else:
+            # Summary metrics
+            strong_buy = len(results_df[results_df["signal"] == "STRONG BUY"])
+            buy_count  = len(results_df[results_df["signal"] == "BUY"])
+            watch_cnt  = len(results_df[results_df["signal"] == "WATCH"])
+
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric("🟢 Strong Buy", strong_buy)
+            mc2.metric("💚 Buy",        buy_count)
+            mc3.metric("🟡 Watch",      watch_cnt)
+            mc4.metric("📊 Total Found", len(results_df))
+
+            st.markdown("---")
+
+            # Build display dataframe
+            display_df = results_df[[
+                "symbol", "name", "sector", "cmp",
+                "trendScore", "momScore", "fundScore", "secScore", "rrScore", "total",
+                "signal", "rsi", "sma50", "sma200", "slPrice", "tgtPrice",
+                "pe", "pb", "roe", "de", "promoter",
+            ]].copy()
+
+            display_df.columns = [
+                "Symbol", "Name", "Sector", "CMP (₹)",
+                "Trend/25", "Mom/20", "Fund/25", "Sector/15", "R:R/15", "Total/100",
+                "Signal", "RSI", "SMA50", "SMA200", "SL Price", "Target",
+                "PE", "PB", "ROE%", "D/E", "Promoter%",
+            ]
+
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Symbol":     st.column_config.TextColumn("📍 Symbol"),
+                    "Name":       st.column_config.TextColumn("🏢 Name"),
+                    "Sector":     st.column_config.TextColumn("🏷️ Sector"),
+                    "CMP (₹)":    st.column_config.NumberColumn("💰 CMP (₹)",    format="₹%.2f"),
+                    "Trend/25":   st.column_config.NumberColumn("📈 Trend/25",   format="%d"),
+                    "Mom/20":     st.column_config.NumberColumn("⚡ Mom/20",      format="%d"),
+                    "Fund/25":    st.column_config.NumberColumn("📋 Fund/25",    format="%d"),
+                    "Sector/15":  st.column_config.NumberColumn("🏗️ Sector/15",  format="%d"),
+                    "R:R/15":     st.column_config.NumberColumn("⚖️ R:R/15",     format="%d"),
+                    "Total/100":  st.column_config.NumberColumn("🏆 Score/100",  format="%d"),
+                    "Signal":     st.column_config.TextColumn("🎯 Signal"),
+                    "RSI":        st.column_config.NumberColumn("RSI",           format="%.1f"),
+                    "SMA50":      st.column_config.NumberColumn("SMA50",         format="₹%.0f"),
+                    "SMA200":     st.column_config.NumberColumn("SMA200",        format="₹%.0f"),
+                    "SL Price":   st.column_config.NumberColumn("🛡️ Stop Loss",  format="₹%.2f"),
+                    "Target":     st.column_config.NumberColumn("🎯 Target",     format="₹%.2f"),
+                    "PE":         st.column_config.NumberColumn("PE",            format="%.1f"),
+                    "PB":         st.column_config.NumberColumn("PB",            format="%.1f"),
+                    "ROE%":       st.column_config.NumberColumn("ROE%",          format="%.1f"),
+                    "D/E":        st.column_config.NumberColumn("D/E",           format="%.2f"),
+                    "Promoter%":  st.column_config.NumberColumn("Promoter%",     format="%.1f"),
+                },
+            )
+
+            st.markdown("---")
+
+            # Detailed score breakdown for top stocks
+            st.markdown("### 🔬 Score Breakdown — Top Stocks")
+            top_n = min(10, len(results_df))
+            for _, row in results_df.head(top_n).iterrows():
+                with st.expander(
+                    f"{row['symbol']} — {row['name']} | Score: {row['total']}/100 | {row['signal']}",
+                    expanded=False,
+                ):
+                    bc1, bc2, bc3, bc4, bc5 = st.columns(5)
+                    bc1.metric("Trend",     f"{row['trendScore']}/25")
+                    bc2.metric("Momentum",  f"{row['momScore']}/20")
+                    bc3.metric("Fundamental", f"{row['fundScore']}/25")
+                    bc4.metric("Sector",    f"{row['secScore']}/15")
+                    bc5.metric("Risk:Reward", f"{row['rrScore']}/15")
+
+                    dc1, dc2 = st.columns(2)
+                    with dc1:
+                        st.markdown("**Trend Details:**")
+                        for d in row.get("trendDet", []):
+                            st.markdown(f"- {d}")
+                        st.markdown("**Momentum Details:**")
+                        for d in row.get("momDet", []):
+                            st.markdown(f"- {d}")
+                    with dc2:
+                        st.markdown("**Fundamental Details:**")
+                        for d in row.get("fundDet", []):
+                            st.markdown(f"- {d}")
+                        st.markdown("**Risk:Reward Details:**")
+                        for d in row.get("rrDet", []):
+                            st.markdown(f"- {d}")
+
+                    if row.get("slPrice") and row.get("tgtPrice"):
+                        st.info(f"🛡️ **Stop Loss:** ₹{row['slPrice']:.2f}  |  🎯 **Target:** ₹{row['tgtPrice']:.2f}  |  CMP: ₹{row['cmp']:.2f}")
+
+            st.markdown("---")
+
+            # Download
+            csv_out = display_df.to_csv(index=False)
+            st.download_button(
+                label="💾 Download Screener Results as CSV",
+                data=csv_out,
+                file_name=f"Positional_Screener_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+    else:
+        st.info("👆 Set your filters above and click **Run Screener** to start the analysis.")
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #00D4AA;">How it works</h3>
+            <p>Each stock in the NSE 500 is scored across 5 dimensions:</p>
+            <ul>
+                <li><strong>Trend (25 pts)</strong> — Is the stock above its 200 DMA? Golden Cross present? Making higher highs?</li>
+                <li><strong>Momentum (20 pts)</strong> — RSI in trending zone (50–72)? Outperforming Nifty 500? Volume confirming the move?</li>
+                <li><strong>Fundamentals (25 pts)</strong> — Revenue/PAT growth, ROE, Debt/Equity, Promoter holding</li>
+                <li><strong>Sector Tailwind (15 pts)</strong> — How strong is the Nifty sector index over past 1 year?</li>
+                <li><strong>Risk:Reward (15 pts)</strong> — ATR-based Stop Loss vs Target gives R:R ratio</li>
+            </ul>
+            <p><strong>Signals:</strong> STRONG BUY (≥80) · BUY (≥70) · WATCH (≥60) · SKIP (&lt;60)</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.stop()
+
 # Check if we should render market report
 if st.session_state.get('page_mode') == 'market_report':
     # Add back to main button in sidebar
@@ -613,6 +803,10 @@ with st.sidebar:
 
     if st.button("🚀 ATH Breakout Analysis", use_container_width=True, help="Stocks breaking above All-Time Highs"):
         st.session_state.page_mode = 'ath_breakout_report'
+        st.rerun()
+
+    if st.button("🎯 Positional Screener", use_container_width=True, help="Multi-factor NSE 500 scoring: Trend + Momentum + Fundamentals + Sector + Risk:Reward"):
+        st.session_state.page_mode = 'positional_screener'
         st.rerun()
     
     st.markdown("### 📊 Excel Watchlists")
@@ -1189,7 +1383,80 @@ else:
             </ul>
         </div>
         """, unsafe_allow_html=True)
-    
+
+    st.markdown("---")
+    st.markdown("### 🎯 Screeners & Reports")
+
+    screen_col1, screen_col2, screen_col3, screen_col4 = st.columns(4)
+
+    with screen_col1:
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #00D4AA;">🎯 Positional Screener</h3>
+            <p>Multi-factor scoring across NSE 500 stocks — Trend, Momentum, Fundamentals, Sector, and Risk:Reward.</p>
+            <ul style="margin-top: 1rem;">
+                <li>100-point composite score</li>
+                <li>STRONG BUY / BUY / WATCH</li>
+                <li>ATR-based SL &amp; Target</li>
+                <li>Detailed breakdown per stock</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🎯 Open Positional Screener", key="home_positional", use_container_width=True):
+            st.session_state.page_mode = 'positional_screener'
+            st.rerun()
+
+    with screen_col2:
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #7B68EE;">🏆 Lifetime High Report</h3>
+            <p>Stocks trading near their all-time highs with Cup &amp; Handle pattern confirmation.</p>
+            <ul style="margin-top: 1rem;">
+                <li>Within 2% of ATH</li>
+                <li>Cup &amp; Handle detection</li>
+                <li>RSI momentum check</li>
+                <li>Interactive pattern charts</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🏆 Open Lifetime High Report", key="home_lifetime", use_container_width=True):
+            st.session_state.page_mode = 'lifetime_high_report'
+            st.rerun()
+
+    with screen_col3:
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #FF6B6B;">🚀 ATH Breakout Report</h3>
+            <p>Stocks breaking above their 52-week and all-time highs with volume confirmation.</p>
+            <ul style="margin-top: 1rem;">
+                <li>Price &gt; ATH × 1.1 filter</li>
+                <li>Volume &amp; market cap filter</li>
+                <li>Breakout confirmation</li>
+                <li>Downloadable CSV report</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🚀 Open ATH Breakout Report", key="home_ath", use_container_width=True):
+            st.session_state.page_mode = 'ath_breakout_report'
+            st.rerun()
+
+    with screen_col4:
+        st.markdown("""
+        <div class="stock-card">
+            <h3 style="color: #FFD700;">🎯 NSE 500 Market Report</h3>
+            <p>Scan all NSE 500 stocks for Golden Cross and Death Cross signals with RSI divergence.</p>
+            <ul style="margin-top: 1rem;">
+                <li>Golden / Death Cross scan</li>
+                <li>RSI divergence detection</li>
+                <li>BUY / HOLD / SELL signals</li>
+                <li>Downloadable CSV report</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🎯 Open NSE 500 Report", key="home_nse500", use_container_width=True):
+            st.session_state.page_mode = 'market_report'
+            st.rerun()
+
     st.markdown("---")
     
     # Quick start guide
