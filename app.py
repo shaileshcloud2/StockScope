@@ -11,9 +11,8 @@ from utils.watchlist_pages import render_watchlist_navigation
 from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education, calculate_rsi, detect_divergence
 from utils.market_analysis_report import generate_market_analysis_report, render_pattern_chart
 from utils.ath_breakout_report import generate_ath_breakout_report, render_ath_chart
-from utils.positional_screener import (
-    run_positional_screener, load_symbols, get_signal_badge
-)
+from screener_server import start_server as _start_screener_server
+import streamlit.components.v1 as _components
 import io
 
 # Page configuration
@@ -319,307 +318,37 @@ if st.session_state.get('page_mode') == 'ath_breakout_report':
 
 # Check if we should render positional screener
 if st.session_state.get('page_mode') == 'positional_screener':
+    import os as _os
+    from pathlib import Path as _Path
+
     with st.sidebar:
         if st.button("← Back to Main Analysis", use_container_width=True):
             st.session_state.page_mode = 'main'
             st.rerun()
 
-    st.markdown('<h1 class="main-header">🎯 Positional Screener</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">NSE 500 · Yahoo Finance · Multi-Factor Scoring: Trend · Momentum · Fundamentals · Sector · Risk:Reward</p>', unsafe_allow_html=True)
+    # Start the Flask screener server in background (idempotent)
+    _start_screener_server()
 
-    # ── Stock detail dialog ────────────────────────────────────────
-    @st.dialog("📊 Stock Assessment Details", width="large")
-    def show_stock_dialog(r):
-        sig_colors = {
-            "STRONG BUY": "#00C853", "BUY": "#69F0AE",
-            "WATCH": "#FFD740",      "SKIP": "#FF5252",
-        }
-        sig_col = sig_colors.get(r.get("signal", "SKIP"), "#888")
-        chg     = r.get("changePct", 0)
-        chg_col = "#00C853" if chg >= 0 else "#FF5252"
-        chg_sym = "▲" if chg >= 0 else "▼"
-
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#1e3c72,#2a5298);border-radius:12px;padding:1rem 1.5rem;margin-bottom:1rem;border:1px solid rgba(0,212,170,0.3);">
-            <h2 style="margin:0;color:#00D4AA;">{r['symbol']} &nbsp;<span style="font-size:1rem;color:#8B949E;">— {r['name']}</span></h2>
-            <p style="margin:0.3rem 0 0 0;color:#8B949E;">{r['sector']} &nbsp;|&nbsp; {r.get('cap','—')} Cap
-               &nbsp;|&nbsp; <span style="color:{chg_col};">{chg_sym} {abs(chg):.2f}% today</span>
-               &nbsp;|&nbsp; <span style="background:{sig_col};color:#111;padding:2px 10px;border-radius:10px;font-weight:700;">{r['signal']}</span>
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Score summary bar
-        total = r.get("total", 0)
-        bar_w = int(total)
-        bar_col = "#00C853" if total >= 80 else "#69F0AE" if total >= 70 else "#FFD740" if total >= 60 else "#FF5252"
-        st.markdown(f"""
-        <div style="margin-bottom:1.2rem;">
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                <span style="color:#ccc;font-weight:600;">Composite Score</span>
-                <span style="color:{bar_col};font-weight:800;font-size:1.2rem;">{total}/100</span>
-            </div>
-            <div style="background:#2a2a2a;border-radius:8px;height:14px;overflow:hidden;">
-                <div style="width:{bar_w}%;height:100%;background:{bar_col};border-radius:8px;transition:width 0.4s;"></div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 5 dimension score cards
-        d1, d2, d3, d4, d5 = st.columns(5)
-        def score_card(col, label, val, mx, icon):
-            pct = int(val / mx * 100)
-            c2  = "#00C853" if pct >= 70 else "#FFD740" if pct >= 40 else "#FF5252"
-            col.markdown(f"""
-            <div style="background:rgba(0,0,0,0.3);border-radius:10px;padding:0.7rem;text-align:center;border:1px solid {c2}40;">
-                <div style="font-size:1.4rem;">{icon}</div>
-                <div style="color:{c2};font-size:1.3rem;font-weight:800;">{val}/{mx}</div>
-                <div style="color:#8B949E;font-size:0.75rem;">{label}</div>
-            </div>""", unsafe_allow_html=True)
-        score_card(d1, "Trend",       r.get("trendScore",0), 25, "📈")
-        score_card(d2, "Momentum",    r.get("momScore",0),   20, "⚡")
-        score_card(d3, "Fundamental", r.get("fundScore",0),  25, "📋")
-        score_card(d4, "Sector",      r.get("secScore",0),   15, "🏗️")
-        score_card(d5, "Risk:Reward", r.get("rrScore",0),    15, "⚖️")
-
-        st.markdown("---")
-
-        # Trade levels
-        if r.get("slPrice") and r.get("tgtPrice"):
-            cmp = r.get("cmp", 0)
-            sl  = r.get("slPrice", 0)
-            tgt = r.get("tgtPrice", 0)
-            risk    = cmp - sl
-            reward  = tgt - cmp
-            rr_val  = round(reward / risk, 1) if risk > 0 else 0
-            tl1, tl2, tl3, tl4 = st.columns(4)
-            tl1.metric("💰 CMP",       f"₹{cmp:.2f}")
-            tl2.metric("🛡️ Stop Loss", f"₹{sl:.2f}", delta=f"-{((cmp-sl)/cmp*100):.1f}%", delta_color="inverse")
-            tl3.metric("🎯 Target",    f"₹{tgt:.2f}", delta=f"+{((tgt-cmp)/cmp*100):.1f}%")
-            tl4.metric("⚖️ R:R Ratio", f"{rr_val}:1")
-
-        st.markdown("---")
-
-        # Detailed breakdown tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["📈 Trend Analysis", "⚡ Momentum", "📋 Fundamentals", "⚖️ Risk:Reward"])
-
-        with tab1:
-            c1, c2 = st.columns(2)
-            c1.metric("SMA 50",  f"₹{r.get('sma50',0):,.2f}"  if r.get('sma50') else "N/A")
-            c2.metric("SMA 200", f"₹{r.get('sma200',0):,.2f}" if r.get('sma200') else "N/A")
-            if r.get("sma50") and r.get("sma200"):
-                cross = "🟢 Golden Cross (Bullish)" if r["sma50"] > r["sma200"] else "🔴 Death Cross (Bearish)"
-                st.info(f"**MA Status:** {cross}")
-            for d in r.get("trendDet", []):
-                icon = "✅" if "+" in d and "+0" not in d else "❌"
-                st.markdown(f"{icon} {d}")
-
-        with tab2:
-            mc1, mc2, mc3 = st.columns(3)
-            mc1.metric("RSI (14)", f"{r.get('rsi',0):.1f}" if r.get('rsi') else "N/A")
-            mc2.metric("vs Nifty 500", f"{r.get('relStr',0):+.1f}%")
-            mc3.metric("Volume Ratio", f"{r.get('volRatio',0):.2f}x")
-            rsi_v = r.get("rsi", 0) or 0
-            rsi_label = "🔴 Overbought" if rsi_v > 80 else "🟢 Ideal Zone (50-72)" if 50 <= rsi_v <= 72 else "🟡 Slightly Overbought" if rsi_v > 72 else "🔴 Weak"
-            st.info(f"**RSI Signal:** {rsi_label}")
-            for d in r.get("momDet", []):
-                icon = "✅" if "+" in d and "+0" not in d else "❌"
-                st.markdown(f"{icon} {d}")
-
-        with tab3:
-            fc1, fc2, fc3 = st.columns(3)
-            fc1.metric("PE Ratio",   f"{r.get('pe',0):.1f}"  if r.get('pe') else "N/A")
-            fc2.metric("PB Ratio",   f"{r.get('pb',0):.1f}"  if r.get('pb') else "N/A")
-            fc3.metric("ROE %",      f"{r.get('roe',0):.1f}%" if r.get('roe') else "N/A")
-            fc4, fc5, fc6 = st.columns(3)
-            fc4.metric("D/E Ratio",  f"{r.get('de',0):.2f}"   if r.get('de') is not None else "N/A")
-            fc5.metric("Promoter %", f"{r.get('promoter',0):.1f}%" if r.get('promoter') else "N/A")
-            fc6.metric("Rev Growth", f"{r.get('revGrowth',0):.1f}%" if r.get('revGrowth') else "N/A")
-            st.markdown("**Fundamental Score Breakdown:**")
-            for d in r.get("fundDet", []):
-                st.markdown(f"- {d}")
-            if r.get("fundUpdated"):
-                st.caption(f"Fundamentals last updated: {r['fundUpdated']}")
-
-        with tab4:
-            for d in r.get("rrDet", []):
-                icon = "✅" if "excellent" in d or "good" in d else "⚠️" if "acceptable" in d else "❌"
-                st.markdown(f"{icon} {d}")
-            if r.get("slPrice") and r.get("tgtPrice"):
-                cmp2 = r.get("cmp", 0)
-                st.markdown(f"""
-                **Trade Setup:**
-                - Entry (CMP): ₹{cmp2:.2f}
-                - Stop Loss: ₹{r['slPrice']:.2f} ({((cmp2 - r['slPrice'])/cmp2*100):.1f}% risk)
-                - Target: ₹{r['tgtPrice']:.2f} ({((r['tgtPrice'] - cmp2)/cmp2*100):.1f}% upside)
-                """)
-
-        st.markdown("---")
-        st.caption(f"Data points: {r.get('dataPoints','—')} days  |  Scanned: {datetime.now().strftime('%d %b %Y %H:%M')}")
-
-    # ── Filters row ───────────────────────────────────────────────
-    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
-    with col1:
-        min_score_val = st.slider("Min Score", 40, 90, 60, 5, help="Minimum composite score out of 100")
-    with col2:
-        signal_filter = st.selectbox("Signal", ["All", "STRONG BUY", "BUY", "WATCH"], index=0)
-    with col3:
-        all_sectors = ["All"] + sorted(set(r.get("sector", "Unknown") for r in load_symbols()))
-        sector_filter = st.selectbox("Sector", all_sectors, index=0)
-    with col4:
-        max_stocks = st.selectbox("Stocks to scan", [50, 100, 200, 500], index=3,
-                                  help="500 = full NSE 500 scan (takes ~10 min)")
-    with col5:
-        run_scan = st.button("🔍 Run Screener", use_container_width=True, type="primary")
-
-    st.markdown("""
-    <div class="feature-highlight">
-        <strong>📊 Scoring Breakdown (100 pts):</strong>
-        Trend <strong>25</strong> (200 DMA + Golden Cross + HH/HL) &nbsp;|&nbsp;
-        Momentum <strong>20</strong> (RSI + vs Nifty 500 + Volume) &nbsp;|&nbsp;
-        Fundamentals <strong>25</strong> (PE/PB/ROE/D·E/Promoter) &nbsp;|&nbsp;
-        Sector <strong>15</strong> (Nifty sector index 1Y) &nbsp;|&nbsp;
-        Risk:Reward <strong>15</strong> (Support + ATR-based SL/Target) &nbsp;|&nbsp;
-        <em>Click any stock row to see full details</em>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    if run_scan or st.session_state.get('positional_results') is not None:
-        if run_scan:
-            st.session_state.pop('positional_results', None)
-
-        if 'positional_results' not in st.session_state or run_scan:
-            progress_bar = st.progress(0)
-            status_text  = st.empty()
-
-            with st.spinner(""):
-                results_df = run_positional_screener(
-                    min_score=min_score_val,
-                    signal_filter=signal_filter,
-                    sector_filter=sector_filter,
-                    max_stocks=max_stocks,
-                    progress_bar=progress_bar,
-                    status_text=status_text,
-                )
-            progress_bar.empty()
-            status_text.empty()
-            st.session_state.positional_results = results_df
-        else:
-            # Apply live filters to cached results without re-scanning
-            raw_df = st.session_state.positional_results
-            results_df = raw_df.copy()
-            if signal_filter != "All":
-                results_df = results_df[results_df["signal"] == signal_filter]
-            if sector_filter != "All":
-                results_df = results_df[results_df["sector"] == sector_filter]
-            results_df = results_df[results_df["total"] >= min_score_val].reset_index(drop=True)
-
-        if results_df.empty:
-            st.warning("No stocks matched the criteria. Try lowering the minimum score or changing filters.")
-        else:
-            # ── Summary cards ─────────────────────────────────────
-            all_scored  = len(st.session_state.get('positional_results', results_df))
-            strong_buy  = len(results_df[results_df["signal"] == "STRONG BUY"])
-            buy_count   = len(results_df[results_df["signal"] == "BUY"])
-            watch_cnt   = len(results_df[results_df["signal"] == "WATCH"])
-
-            mc1, mc2, mc3, mc4 = st.columns(4)
-            mc1.metric("📊 Stocks Scored", all_scored,  help="Total stocks successfully scored")
-            mc2.metric("🟢 Strong Buy",    strong_buy,  help="Score ≥ 80")
-            mc3.metric("💚 Buy",           buy_count,   help="Score 70–79")
-            mc4.metric("🟡 Watch",         watch_cnt,   help="Score 60–69")
-
-            st.markdown("---")
-            st.markdown(f"**Showing {len(results_df)} stocks** — click any **Details** button to open the full assessment popup.")
-
-            # ── Per-row card list ─────────────────────────────────
-            sig_colors = {
-                "STRONG BUY": "#00C853", "BUY": "#69F0AE",
-                "WATCH": "#FFD740",      "SKIP": "#FF5252",
-            }
-
-            hdr = st.columns([1.2, 2.5, 1.5, 1, 1.2, 1, 1.5, 1, 1, 1.2, 1.2, 1])
-            for label, col in zip(
-                ["Symbol","Name","Sector","Cap","CMP","Chg%","Score/100","RSI","PE","SL","Target",""],
-                hdr
-            ):
-                col.markdown(f"**{label}**")
-            st.markdown("<hr style='margin:4px 0;border-color:rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
-
-            for idx, row in results_df.iterrows():
-                sig   = row.get("signal", "SKIP")
-                sc    = sig_colors.get(sig, "#888")
-                chg   = row.get("changePct", 0)
-                chg_c = "#00C853" if chg >= 0 else "#FF5252"
-                chg_s = f"{'▲' if chg >= 0 else '▼'}{abs(chg):.2f}%"
-
-                rc = st.columns([1.2, 2.5, 1.5, 1, 1.2, 1, 1.5, 1, 1, 1.2, 1.2, 1])
-                rc[0].markdown(f"**{row['symbol']}**")
-                rc[1].markdown(f"{row['name'][:28]}{'…' if len(row['name'])>28 else ''}")
-                rc[2].markdown(f"{row['sector'][:18]}{'…' if len(row['sector'])>18 else ''}")
-                rc[3].markdown(f"{row.get('cap','—')}")
-                rc[4].markdown(f"₹{row['cmp']:,.1f}")
-                rc[5].markdown(f"<span style='color:{chg_c};'>{chg_s}</span>", unsafe_allow_html=True)
-
-                total = row.get("total", 0)
-                bar_col = "#00C853" if total >= 80 else "#69F0AE" if total >= 70 else "#FFD740"
-                rc[6].markdown(
-                    f"<div style='background:#2a2a2a;border-radius:6px;height:18px;overflow:hidden;'>"
-                    f"<div style='width:{total}%;height:100%;background:{bar_col};border-radius:6px;'></div></div>"
-                    f"<div style='text-align:center;font-size:0.75rem;color:{bar_col};font-weight:700;'>{total}</div>",
-                    unsafe_allow_html=True
-                )
-                rc[7].markdown(f"{row.get('rsi',0):.1f}" if row.get('rsi') else "—")
-                rc[8].markdown(f"{row.get('pe',0):.1f}"  if row.get('pe')  else "—")
-                rc[9].markdown(f"₹{row.get('slPrice',0):.0f}"  if row.get('slPrice')  else "—")
-                rc[10].markdown(f"₹{row.get('tgtPrice',0):.0f}" if row.get('tgtPrice') else "—")
-
-                if rc[11].button("🔍", key=f"detail_{idx}", help="View full assessment"):
-                    show_stock_dialog(row.to_dict())
-
-                st.markdown("<hr style='margin:2px 0;border-color:rgba(255,255,255,0.05);'>", unsafe_allow_html=True)
-
-            st.markdown("---")
-
-            # Download
-            download_df = results_df[[
-                "symbol","name","sector","cap","cmp","changePct",
-                "total","signal","rsi","sma50","sma200","slPrice","tgtPrice",
-                "trendScore","momScore","fundScore","secScore","rrScore",
-                "pe","pb","roe","de","promoter","revGrowth",
-            ]].copy()
-            download_df.columns = [
-                "Symbol","Name","Sector","Cap","CMP","Change%",
-                "Score/100","Signal","RSI","SMA50","SMA200","SL","Target",
-                "Trend/25","Mom/20","Fund/25","Sector/15","RR/15",
-                "PE","PB","ROE%","D/E","Promoter%","RevGrowth%",
-            ]
-            st.download_button(
-                label="💾 Download Screener Results as CSV",
-                data=download_df.to_csv(index=False),
-                file_name=f"Positional_Screener_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
+    # Compute Flask base URL for Replit port proxying
+    _replit_domain = _os.getenv("REPLIT_DOMAINS", "")
+    if _replit_domain:
+        _flask_base = f"https://3001-{_replit_domain}"
     else:
-        st.info("👆 Set your filters above and click **Run Screener** to start the analysis.")
-        st.markdown("""
-        <div class="stock-card">
-            <h3 style="color: #00D4AA;">How it works</h3>
-            <p>Each stock in the NSE 500 is scored across 5 dimensions:</p>
-            <ul>
-                <li><strong>Trend (25 pts)</strong> — Is the stock above its 200 DMA? Golden Cross present? Making higher highs?</li>
-                <li><strong>Momentum (20 pts)</strong> — RSI in trending zone (50–72)? Outperforming Nifty 500? Volume confirming the move?</li>
-                <li><strong>Fundamentals (25 pts)</strong> — Revenue/PAT growth, ROE, Debt/Equity, Promoter holding</li>
-                <li><strong>Sector Tailwind (15 pts)</strong> — How strong is the Nifty sector index over past 1 year?</li>
-                <li><strong>Risk:Reward (15 pts)</strong> — ATR-based Stop Loss vs Target gives R:R ratio</li>
-            </ul>
-            <p><strong>Signals:</strong> STRONG BUY (≥80) · BUY (≥70) · WATCH (≥60) · SKIP (&lt;60)</p>
-            <p>Click the <strong>🔍</strong> button on any row to open a popup with the full breakdown.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        _flask_base = "http://localhost:3001"
+
+    # Read index.html and inject the Flask base URL
+    _html_path = _Path(__file__).parent / "public" / "index.html"
+    _html = _html_path.read_text(encoding="utf-8")
+    _html = _html.replace("FLASK_BASE_PLACEHOLDER", _flask_base)
+
+    st.markdown(
+        f'<p style="font-size:0.85rem;color:#64748b;margin-bottom:0.5rem;">'
+        f'Screener server: <code>{_flask_base}</code> &nbsp;·&nbsp; '
+        f'Click <strong>Refresh Scan</strong> inside the panel below to start a live NSE 500 scan.</p>',
+        unsafe_allow_html=True,
+    )
+
+    _components.html(_html, height=950, scrolling=True)
 
     st.stop()
 
