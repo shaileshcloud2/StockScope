@@ -619,6 +619,173 @@ def serve(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
+# ── Direct scan (no Flask) — called from Streamlit ───────────────
+def run_scan_direct(progress_cb=None):
+    """
+    Run the full NSE 500 scan synchronously.
+    progress_cb(pct: int, status: str) is called periodically.
+    Returns list of result dicts (same structure as scan["results"].values()).
+    """
+    def _cb(pct, status):
+        if progress_cb:
+            try:
+                progress_cb(pct, status)
+            except Exception:
+                pass
+
+    results       = {}
+    failed        = []
+    skipped       = []
+    no_data       = []
+
+    _cb(0, "Loading symbols and fundamentals...")
+    symbols = load_symbols()
+    fundamentals_fresh = load_fundamentals()
+    global FUNDAMENTALS
+    FUNDAMENTALS = fundamentals_fresh
+
+    if not symbols:
+        _cb(100, "No symbols loaded — check data/nse500_symbols.csv")
+        return []
+
+    total_syms = len(symbols)
+
+    _cb(2, "Fetching sector index performance...")
+    sector_scores = fetch_sector_tailwinds()
+
+    _cb(5, f"Fetching live quotes for {total_syms} stocks...")
+    live_quotes = {}
+    for idx, row in enumerate(symbols):
+        sym = row["symbol"]
+        q   = fetch_stock_info(sym)
+        if q and q["cmp"] > 0:
+            live_quotes[sym] = q
+        else:
+            no_data.append(sym)
+        if idx % 10 == 0:
+            pct = 5 + int((idx / total_syms) * 15)
+            _cb(min(pct, 20),
+                f"Fetching quotes {idx+1}/{total_syms} "
+                f"({len(live_quotes)} OK, {len(no_data)} no data)...")
+        time.sleep(0.15)
+
+    if not live_quotes:
+        _cb(100, "Scan failed: no quotes fetched — check internet connection.")
+        return []
+
+    nifty_3m = fetch_nifty_3m()
+
+    for idx, row in enumerate(symbols):
+        sym    = row["symbol"]
+        sector = row.get("sector", "Unknown")
+        cap    = row.get("cap", "")
+        name   = row.get("name", sym)
+
+        pct = 20 + int((idx / total_syms) * 75)
+        _cb(min(pct, 95), f"Analysing {sym} ({idx+1}/{total_syms})...")
+
+        q   = live_quotes.get(sym, {})
+        cmp = q.get("cmp", 0)
+        if cmp <= 0:
+            skipped.append(sym)
+            continue
+
+        try:
+            hist_rows = fetch_historical(sym, days=270)
+            if not hist_rows or len(hist_rows) < 50:
+                failed.append(sym)
+                continue
+
+            closes  = [float(r[4]) for r in hist_rows if r[4] is not None and r[4] > 0]
+            volumes = [int(r[5])   for r in hist_rows if r[5] is not None and r[5] >= 0]
+            highs   = [float(r[2]) for r in hist_rows if r[2] is not None and r[2] > 0]
+            lows    = [float(r[3]) for r in hist_rows if r[3] is not None and r[3] > 0]
+
+            n = len(closes)
+            if n < 50:
+                failed.append(sym)
+                continue
+
+            min_len = min(n, len(volumes), len(highs), len(lows))
+            closes  = closes[:min_len]
+            volumes = volumes[:min_len]
+            highs   = highs[:min_len]
+            lows    = lows[:min_len]
+
+            sma50     = calc_sma(closes, 50)
+            sma200    = calc_sma(closes, 200)
+            rsi       = calc_rsi(closes)
+            hh_hl     = check_hh_hl(closes)
+            vol_ratio = calc_vol_ratio(closes, volumes)
+            atr       = calc_atr(highs, lows, closes)
+
+            rel_str = None
+            if n >= 63:
+                stk_3m  = (closes[-1] - closes[-63]) / closes[-63] * 100
+                rel_str = round(stk_3m - nifty_3m, 2)
+
+            t_score, t_det        = score_trend(cmp, sma50, sma200, hh_hl)
+            m_score, m_det        = score_momentum(rsi, rel_str, vol_ratio)
+            f_score, f_det, f_raw = score_fundamental(sym)
+            s_score               = sector_scores.get(sector, 9)
+            r_score, r_det        = score_rr(cmp, sma50, sma200, atr)
+
+            total_score = t_score + m_score + f_score + s_score + r_score
+
+            sl_pct    = min((atr * 2 / cmp) * 100, 12) / 100 if atr else 0.10
+            sl_price  = round(cmp * (1 - sl_pct), 2)
+            tgt_price = round(cmp + (cmp - sl_price) * 2.5, 2)
+
+            results[sym] = {
+                "symbol":      sym,
+                "name":        name,
+                "sector":      sector,
+                "cap":         cap,
+                "cmp":         round(cmp, 2),
+                "changePct":   round(q.get("change", 0), 2),
+                "yearHigh":    round(q.get("yr_high", 0), 2),
+                "yearLow":     round(q.get("yr_low", 0),  2),
+                "volume":      q.get("volume", 0),
+                "sma50":       sma50,
+                "sma200":      sma200,
+                "rsi":         rsi,
+                "volRatio":    vol_ratio,
+                "trendScore":  t_score,
+                "momScore":    m_score,
+                "fundScore":   f_score,
+                "secScore":    s_score,
+                "rrScore":     r_score,
+                "total":       total_score,
+                "signal":      get_signal(total_score),
+                "slPrice":     sl_price,
+                "tgtPrice":    tgt_price,
+                "pe":          f_raw.get("pe", 0),
+                "pb":          f_raw.get("pb", 0),
+                "roe":         f_raw.get("roe_pct", 0),
+                "de":          f_raw.get("de_ratio", 0),
+                "revGrowth":   f_raw.get("rev_growth_pct", 0),
+                "promoter":    f_raw.get("promoter_pct", 0),
+                "fundUpdated": f_raw.get("last_updated", ""),
+                "trendDet":    t_det,
+                "momDet":      m_det,
+                "fundDet":     f_det,
+                "rrDet":       r_det,
+                "dataQuality": "full" if n >= 200 else "partial" if n >= 50 else "limited",
+                "scannedAt":   datetime.now().strftime("%d %b %Y %H:%M"),
+            }
+        except Exception as e:
+            log.warning("Analysis error for %s: %s", sym, e)
+            failed.append(sym)
+
+        time.sleep(0.05)
+
+    n_scored = len(results)
+    _cb(100,
+        f"Scan complete — {n_scored} scored, {len(skipped)} skipped, "
+        f"{len(failed)} failed, {len(no_data)} no data")
+    return sorted(results.values(), key=lambda x: x["total"], reverse=True)
+
+
 # ── Server start helper ───────────────────────────────────────────
 _server_started = False
 _server_lock    = threading.Lock()

@@ -11,7 +11,7 @@ from utils.watchlist_pages import render_watchlist_navigation
 from utils.nse500_analyzer import analyze_nse500_crosses, filter_results, get_rsi_education, calculate_rsi, detect_divergence
 from utils.market_analysis_report import generate_market_analysis_report, render_pattern_chart
 from utils.ath_breakout_report import generate_ath_breakout_report, render_ath_chart
-from screener_server import start_server as _start_screener_server
+from screener_server import run_scan_direct as _run_scan_direct
 import streamlit.components.v1 as _components
 import io
 
@@ -318,37 +318,53 @@ if st.session_state.get('page_mode') == 'ath_breakout_report':
 
 # Check if we should render positional screener
 if st.session_state.get('page_mode') == 'positional_screener':
-    import os as _os
+    import json as _json
     from pathlib import Path as _Path
 
     with st.sidebar:
         if st.button("← Back to Main Analysis", use_container_width=True):
             st.session_state.page_mode = 'main'
+            st.session_state.pop('screener_results', None)
             st.rerun()
 
-    # Start the Flask screener server in background (idempotent)
-    _start_screener_server()
+    st.title("🎯 Positional Screener — NSE 500")
+    st.caption("Multi-factor scoring: Trend · Momentum · Fundamentals · Sector Tailwind · Risk:Reward")
 
-    # Compute Flask base URL for Replit port proxying
-    _replit_domain = _os.getenv("REPLIT_DOMAINS", "")
-    if _replit_domain:
-        _flask_base = f"https://3001-{_replit_domain}"
-    else:
-        _flask_base = "http://localhost:3001"
+    # ── Run Scan button ──────────────────────────────────────────
+    col_btn, col_info = st.columns([1, 3])
+    with col_btn:
+        _run_btn = st.button("🔍 Run Scan", type="primary", use_container_width=True,
+                             help="Fetch live data and score all 521 NSE 500 stocks")
+    with col_info:
+        if st.session_state.get('screener_results'):
+            _first = st.session_state['screener_results'][0]
+            st.info(f"Last scan: {_first.get('scannedAt', '—')}  ·  {len(st.session_state['screener_results'])} stocks scored")
+        else:
+            st.info("No scan results yet — click **Run Scan** to analyse all NSE 500 stocks with live Yahoo Finance data.")
 
-    # Read index.html and inject the Flask base URL
+    if _run_btn:
+        _progress_bar  = st.progress(0, text="Starting scan…")
+        _status_holder = st.empty()
+
+        def _on_progress(pct, status):
+            _progress_bar.progress(min(int(pct), 100) / 100, text=status)
+            _status_holder.caption(status)
+
+        _results = _run_scan_direct(progress_cb=_on_progress)
+        st.session_state['screener_results'] = _results
+        _progress_bar.empty()
+        _status_holder.empty()
+        st.rerun()
+
+    # ── Render HTML panel with pre-injected data ─────────────────
     _html_path = _Path(__file__).parent / "public" / "index.html"
-    _html = _html_path.read_text(encoding="utf-8")
-    _html = _html.replace("FLASK_BASE_PLACEHOLDER", _flask_base)
+    _html_template = _html_path.read_text(encoding="utf-8")
 
-    st.markdown(
-        f'<p style="font-size:0.85rem;color:#64748b;margin-bottom:0.5rem;">'
-        f'Screener server: <code>{_flask_base}</code> &nbsp;·&nbsp; '
-        f'Click <strong>Refresh Scan</strong> inside the panel below to start a live NSE 500 scan.</p>',
-        unsafe_allow_html=True,
-    )
+    _results_data = st.session_state.get('screener_results', [])
+    _alldata_json  = _json.dumps(_results_data, ensure_ascii=False, default=str)
+    _html_ready    = _html_template.replace("ALLDATA_PLACEHOLDER", _alldata_json)
 
-    _components.html(_html, height=950, scrolling=True)
+    _components.html(_html_ready, height=820, scrolling=True)
 
     st.stop()
 
