@@ -130,6 +130,18 @@ tbody tr:hover { background: rgba(34,211,238,0.04); }
 .signal-watch { background: rgba(245,158,11,0.12); color: var(--watch); }
 .signal-skip { background: rgba(100,116,139,0.12); color: var(--fg3); }
 
+.trend-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 9px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  white-space: nowrap;
+}
+.trend-up        { background: rgba(16,185,129,0.15);  color: #10b981; }
+.trend-weak-up   { background: rgba(34,211,238,0.12);  color: #22d3ee; }
+.trend-sideways  { background: rgba(245,158,11,0.12);  color: #f59e0b; }
+.trend-weak-down { background: rgba(249,115,22,0.12);  color: #f97316; }
+.trend-down      { background: rgba(239,68,68,0.15);   color: #ef4444; }
+.trend-na        { background: rgba(100,116,139,0.10); color: var(--fg3); }
+
 .score-bar {
   width: 60px; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden;
 }
@@ -245,6 +257,16 @@ tbody tr:hover { background: rgba(34,211,238,0.04); }
       <div class="stat-value watch" id="statWatch">—</div>
       <div class="stat-sub">Score 60-69</div>
     </div>
+    <div class="stat-card">
+      <div class="stat-label">↑ Uptrend</div>
+      <div class="stat-value" style="color:#10b981" id="statUp">—</div>
+      <div class="stat-sub">Price > 50D > 200D</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">↓ Downtrend</div>
+      <div class="stat-value" style="color:#ef4444" id="statDown">—</div>
+      <div class="stat-sub">Price < 50D < 200D</div>
+    </div>
   </div>
 
   <div class="filters">
@@ -252,6 +274,14 @@ tbody tr:hover { background: rgba(34,211,238,0.04); }
     <select id="filterSector" onchange="renderTable()"><option value="">All Sectors</option></select>
     <select id="filterCap" onchange="renderTable()"><option value="">All Caps</option><option>Large</option><option>Mid</option><option>Small</option></select>
     <select id="filterSignal" onchange="renderTable()"><option value="">All Signals</option><option>STRONG BUY</option><option>BUY</option><option>WATCH</option></select>
+    <select id="filterTrend" onchange="renderTable()">
+      <option value="">All Trends</option>
+      <option value="up">↑ Uptrend</option>
+      <option value="weak-up">↗ Weak Up</option>
+      <option value="sideways">→ Sideways</option>
+      <option value="weak-down">↘ Weak Down</option>
+      <option value="down">↓ Downtrend</option>
+    </select>
     <input type="number" id="filterMinScore" placeholder="Min score" min="0" max="100" oninput="renderTable()">
   </div>
 
@@ -267,6 +297,7 @@ tbody tr:hover { background: rgba(34,211,238,0.04); }
             <th onclick="sortBy('changePct')">Change</th>
             <th onclick="sortBy('total')">Score</th>
             <th>Signal</th>
+            <th>Trend</th>
             <th onclick="sortBy('rsi')">RSI</th>
             <th onclick="sortBy('pe')">PE</th>
             <th onclick="sortBy('slPrice')">SL</th>
@@ -274,7 +305,7 @@ tbody tr:hover { background: rgba(34,211,238,0.04); }
           </tr>
         </thead>
         <tbody id="tableBody">
-          <tr><td colspan="11">
+          <tr><td colspan="12">
             <div class="empty-state">
               <h3>No scan results yet</h3>
               <p>Click <strong>Run Scan</strong> above the panel to analyse all NSE 500 stocks.</p>
@@ -307,15 +338,32 @@ let allData = ALLDATA_PLACEHOLDER;
 let sortCol = 'total';
 let sortAsc = false;
 
+// ── Trend classification based on price vs SMA50 vs SMA200 ──────
+function getTrend(d) {
+  const cmp    = d.cmp   || 0;
+  const sma50  = d.sma50 || 0;
+  const sma200 = d.sma200 || 0;
+  if (!sma50 || !sma200) return { key: 'na',        label: '— N/A',        cls: 'trend-na' };
+  if (cmp > sma50 && sma50 > sma200) return { key: 'up',        label: '↑ Uptrend',   cls: 'trend-up' };
+  if (cmp < sma50 && sma50 < sma200) return { key: 'down',      label: '↓ Downtrend', cls: 'trend-down' };
+  if (cmp > sma50  && sma50 <= sma200) return { key: 'weak-up',  label: '↗ Weak Up',   cls: 'trend-weak-up' };
+  if (cmp <= sma50 && sma50 >= sma200) return { key: 'weak-down',label: '↘ Weak Down', cls: 'trend-weak-down' };
+  return { key: 'sideways', label: '→ Sideways', cls: 'trend-sideways' };
+}
+
 function updateStats() {
   const total  = allData.length;
   const strong = allData.filter(d => d.signal === 'STRONG BUY').length;
   const buy    = allData.filter(d => d.signal === 'BUY').length;
   const watch  = allData.filter(d => d.signal === 'WATCH').length;
+  const upCnt  = allData.filter(d => getTrend(d).key === 'up').length;
+  const dnCnt  = allData.filter(d => getTrend(d).key === 'down').length;
   document.getElementById('statTotal').textContent  = total;
   document.getElementById('statStrong').textContent = strong;
   document.getElementById('statBuy').textContent    = buy;
   document.getElementById('statWatch').textContent  = watch;
+  document.getElementById('statUp').textContent     = upCnt;
+  document.getElementById('statDown').textContent   = dnCnt;
   document.getElementById('statSub').textContent    = 'Last scan: ' + (allData[0] ? allData[0].scannedAt : '-');
 }
 
@@ -336,6 +384,7 @@ function renderTable() {
   const sec      = document.getElementById('filterSector').value;
   const cap      = document.getElementById('filterCap').value;
   const sig      = document.getElementById('filterSignal').value;
+  const trendKey = document.getElementById('filterTrend').value;
   const minScore = parseFloat(document.getElementById('filterMinScore').value) || 0;
 
   let filtered = allData.filter(d => {
@@ -343,6 +392,7 @@ function renderTable() {
     if (sec && d.sector !== sec) return false;
     if (cap && d.cap !== cap) return false;
     if (sig && d.signal !== sig) return false;
+    if (trendKey && getTrend(d).key !== trendKey) return false;
     if (d.total < minScore) return false;
     return true;
   });
@@ -360,7 +410,7 @@ function renderTable() {
 
   const tbody = document.getElementById('tableBody');
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><h3>No results</h3><p>Try adjusting filters.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12"><div class="empty-state"><h3>No results</h3><p>Try adjusting filters.</p></div></td></tr>';
     return;
   }
 
@@ -372,6 +422,7 @@ function renderTable() {
                     : d.signal === 'WATCH'        ? 'signal-watch'
                     :                              'signal-skip';
     const scorePct  = Math.min(d.total, 100);
+    const trend     = getTrend(d);
     return '<tr onclick="openDetail(\'' + d.symbol + '\')">' +
       '<td><div class="symbol-cell"><div class="symbol-badge">' + d.symbol.slice(0,2) + '</div>' +
       '<div class="symbol-info"><span class="symbol-name">' + d.symbol + '</span>' +
@@ -384,6 +435,7 @@ function renderTable() {
         '<div class="score-bar"><div class="score-fill" style="width:' + scorePct + '%"></div></div>' +
         '<b>' + d.total + '</b></div></td>' +
       '<td><span class="signal-badge ' + sigClass + '">' + d.signal + '</span></td>' +
+      '<td><span class="trend-badge ' + trend.cls + '">' + trend.label + '</span></td>' +
       '<td>' + (d.rsi != null ? d.rsi : '-') + '</td>' +
       '<td>' + (d.pe  ? d.pe.toFixed(1)  : '-') + '</td>' +
       '<td>Rs ' + d.slPrice.toLocaleString('en-IN')  + '</td>' +
@@ -406,6 +458,20 @@ function openDetail(symbol) {
                  : d.signal === 'BUY'         ? 'signal-buy'
                  : d.signal === 'WATCH'        ? 'signal-watch'
                  :                              'signal-skip';
+  const trend = getTrend(d);
+
+  // Build trend explanation text
+  const trendExplain = trend.key === 'up'
+    ? 'Price (' + d.cmp.toLocaleString('en-IN') + ') > 50 DMA (' + (d.sma50||0).toLocaleString('en-IN') + ') > 200 DMA (' + (d.sma200||0).toLocaleString('en-IN') + ') — classic bullish alignment'
+    : trend.key === 'down'
+    ? 'Price (' + d.cmp.toLocaleString('en-IN') + ') < 50 DMA (' + (d.sma50||0).toLocaleString('en-IN') + ') < 200 DMA (' + (d.sma200||0).toLocaleString('en-IN') + ') — classic bearish alignment'
+    : trend.key === 'weak-up'
+    ? 'Price above 50 DMA but 50 DMA still below 200 DMA — recovering, watch for golden cross'
+    : trend.key === 'weak-down'
+    ? 'Price below 50 DMA but 50 DMA still above 200 DMA — weakening, watch for death cross'
+    : trend.key === 'sideways'
+    ? 'Price and MAs are mixed — no clear trend direction'
+    : 'Insufficient data to determine trend';
 
   document.getElementById('modalBody').innerHTML =
     '<div class="score-grid">' +
@@ -413,11 +479,14 @@ function openDetail(symbol) {
     '<div class="score-card-value">' + d.total + '<span>/100</span></div></div>' +
     '<div class="score-card"><div class="score-card-title">Signal</div>' +
     '<div class="score-card-value" style="font-size:18px"><span class="signal-badge ' + sigClass + '">' + d.signal + '</span></div></div>' +
-    '<div class="score-card"><div class="score-card-title">CMP</div>' +
-    '<div class="score-card-value">Rs\u00a0' + d.cmp.toLocaleString('en-IN') + '</div></div>' +
+    '<div class="score-card"><div class="score-card-title">Price Trend</div>' +
+    '<div class="score-card-value" style="font-size:18px"><span class="trend-badge ' + trend.cls + '">' + trend.label + '</span></div></div>' +
     '<div class="score-card"><div class="score-card-title">Target / SL</div>' +
     '<div class="score-card-value" style="font-size:16px">Rs\u00a0' + d.tgtPrice.toLocaleString('en-IN') +
     ' <span style="color:var(--danger)">/ Rs\u00a0' + d.slPrice.toLocaleString('en-IN') + '</span></div></div></div>' +
+
+    '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--fg2)">' +
+    '<span class="trend-badge ' + trend.cls + '" style="margin-right:10px">' + trend.label + '</span>' + trendExplain + '</div>' +
 
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">' +
     '<div><h4 style="font-size:13px;color:var(--fg3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Price Data</h4>' +
@@ -438,12 +507,14 @@ function openDetail(symbol) {
 
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">' +
     '<div><h4 style="font-size:13px;color:var(--fg3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Technical</h4>' +
-    '<div class="detail-row"><span class="detail-label">50 DMA</span><span class="detail-value">' + (d.sma50  ? 'Rs\u00a0'+d.sma50.toLocaleString('en-IN')  : '-') + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">200 DMA</span><span class="detail-value">' + (d.sma200 ? 'Rs\u00a0'+d.sma200.toLocaleString('en-IN') : '-') + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">Price vs 50 DMA</span><span class="detail-value ' + (d.cmp>=(d.sma50||0)?\'change-up\':\'change-down\') + '">' + (d.sma50 ? (d.cmp>d.sma50?\'+\':\'\u2212\')+Math.abs(((d.cmp-d.sma50)/d.sma50*100)).toFixed(1)+\'%\' : \'-\') + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">50 DMA</span><span class="detail-value">' + (d.sma50  ? 'Rs\u00a0'+Math.round(d.sma50).toLocaleString('en-IN')  : '-') + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">Price vs 200 DMA</span><span class="detail-value ' + (d.cmp>=(d.sma200||0)?\'change-up\':\'change-down\') + '">' + (d.sma200 ? (d.cmp>d.sma200?\'+\':\'\u2212\')+Math.abs(((d.cmp-d.sma200)/d.sma200*100)).toFixed(1)+\'%\' : \'-\') + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">200 DMA</span><span class="detail-value">' + (d.sma200 ? 'Rs\u00a0'+Math.round(d.sma200).toLocaleString('en-IN') : '-') + '</span></div>' +
     '<div class="detail-row"><span class="detail-label">RSI (14)</span><span class="detail-value">' + (d.rsi != null ? d.rsi : '-') + '</span></div>' +
     '<div class="detail-row"><span class="detail-label">Volume Ratio</span><span class="detail-value">' + (d.volRatio != null ? d.volRatio : '-') + '</span></div></div>' +
     '<div><h4 style="font-size:13px;color:var(--fg3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Score Breakdown</h4>' +
-    '<div class="detail-row"><span class="detail-label">Trend</span><span class="detail-value">'         + d.trendScore + '/25</span></div>' +
+    '<div class="detail-row"><span class="detail-label">Trend Score</span><span class="detail-value">'         + d.trendScore + '/25</span></div>' +
     '<div class="detail-row"><span class="detail-label">Momentum</span><span class="detail-value">'      + d.momScore   + '/20</span></div>' +
     '<div class="detail-row"><span class="detail-label">Fundamental</span><span class="detail-value">'   + d.fundScore  + '/25</span></div>' +
     '<div class="detail-row"><span class="detail-label">Sector Tailwind</span><span class="detail-value">'+ d.secScore  + '/15</span></div>' +
