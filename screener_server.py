@@ -28,7 +28,14 @@ HOST = "0.0.0.0"
 
 DATA_DIR    = Path(__file__).parent / "data"
 SYMBOLS_CSV = DATA_DIR / "nse500_symbols.csv"
-FUND_CSV    = DATA_DIR / "fundamentals.csv"
+FUND_CSV    = DATA_DIR / "fundamentals.csv"   # kept for legacy reference only
+
+# SQLite-based fundamentals (replaces CSV loader)
+sys.path.insert(0, str(Path(__file__).parent))
+from utils.fundamentals_db import (
+    load_fundamentals as _load_fund_sqlite,
+    init_db as _init_fund_db,
+)
 
 SECTOR_INDEX_MAP = {
     "Financial Services": ["^CNXBANK", "^CNXFIN", "^CNXPSUBANK"],
@@ -78,31 +85,9 @@ def load_symbols():
     return symbols
 
 def load_fundamentals():
-    if not FUND_CSV.exists():
-        log.warning("fundamentals.csv not found - all stocks get neutral fundamental score")
-        return {}
-    df = pd.read_csv(FUND_CSV)
-    fund = {}
-    for _, row in df.iterrows():
-        sym = str(row["symbol"])
-        fund[sym] = {
-            "rev_growth_score":  int(row.get("rev_growth_score", 3)),
-            "pat_growth_score":  int(row.get("pat_growth_score", 3)),
-            "roe_score":         int(row.get("roe_score", 3)),
-            "de_score":          int(row.get("de_score", 2)),
-            "promoter_score":    int(row.get("promoter_score", 2)),
-            "pe":          float(row.get("pe", 0) or 0),
-            "pb":          float(row.get("pb", 0) or 0),
-            "roe_pct":     float(row.get("roe_pct", 0) or 0),
-            "de_ratio":    float(row.get("de_ratio", 0) or 0),
-            "rev_growth_pct": float(row.get("rev_growth_pct", 0) or 0),
-            "pat_growth_pct": float(row.get("pat_growth_pct", 0) or 0),
-            "promoter_pct":   float(row.get("promoter_pct", 0) or 0),
-            "last_updated":   str(row.get("last_updated", "")),
-            "source":         str(row.get("source", "cached")),
-        }
-    log.info("Fundamentals loaded: %d symbols", len(fund))
-    return fund
+    """Load fundamentals from SQLite (auto-migrates from CSV on first run)."""
+    _init_fund_db()
+    return _load_fund_sqlite()
 
 SYMBOLS      = load_symbols()
 FUNDAMENTALS = load_fundamentals()

@@ -320,6 +320,12 @@ if st.session_state.get('page_mode') == 'ath_breakout_report':
 if st.session_state.get('page_mode') == 'positional_screener':
     import json as _json
     from pathlib import Path as _Path
+    from utils.fundamentals_db import (
+        get_db_status      as _get_fund_status,
+        refresh_fundamentals as _refresh_fund,
+        load_fundamentals  as _load_fund_db,
+    )
+    import screener_server as _ss_mod
 
     with st.sidebar:
         if st.button("← Back to Main Analysis", use_container_width=True):
@@ -330,17 +336,77 @@ if st.session_state.get('page_mode') == 'positional_screener':
     st.title("🎯 Positional Screener — NSE 500")
     st.caption("Multi-factor scoring: Trend · Momentum · Fundamentals · Sector Tailwind · Risk:Reward")
 
+    st.markdown("---")
+
+    # ── Fundamentals DB status & refresh ────────────────────────
+    _fs = _get_fund_status()
+    _stale_icon = "⚠️" if _fs['is_stale'] else "✅"
+    _stale_txt  = f"{_fs['stale']} records need refresh" if _fs['is_stale'] else "All up to date"
+
+    with st.expander(
+        f"📊 Fundamentals Database  ·  {_fs['total']} stocks  ·  "
+        f"Newest: {_fs['newest'] or '—'}  ·  {_stale_icon} {_stale_txt}",
+        expanded=_fs['is_stale'],
+    ):
+        _fc1, _fc2, _fc3, _fc4 = st.columns(4)
+        _fc1.metric("Total Stocks",   _fs['total'])
+        _fc2.metric("Stale Records",  _fs['stale'],
+                    help="Records older than 24 hours")
+        _fc3.metric("Newest Update",  _fs['newest'] or "—")
+        _fc4.metric("Oldest Record",  _fs['oldest'] or "—")
+
+        if _fs['is_stale']:
+            st.warning(
+                f"**{_fs['stale']} records** are older than 24 hours. "
+                "Refresh before scanning for the most accurate scores."
+            )
+
+        _ref_type = "primary" if _fs['is_stale'] else "secondary"
+        _ref_btn  = st.button(
+            "🔄 Refresh Fundamentals from Yahoo Finance",
+            type=_ref_type,
+            help="Fetches PE, PB, ROE, EPS, Book Value for all 521 stocks (~7–10 min)",
+        )
+
+        if _ref_btn:
+            _rp = st.progress(0, text="Starting fundamentals refresh…")
+            _rs = st.empty()
+
+            def _ref_cb(pct, status):
+                _rp.progress(min(int(pct), 100) / 100, text=status)
+                _rs.caption(status)
+
+            _upd, _fail = _refresh_fund(progress_cb=_ref_cb)
+            _rp.empty()
+            _rs.empty()
+            _ss_mod.FUNDAMENTALS = _load_fund_db()
+            st.success(
+                f"✅ Refresh complete — **{_upd} updated**, {_fail} failed. "
+                "Fundamentals are now current. Run a new scan to use the latest data."
+            )
+            st.rerun()
+
+    st.markdown("---")
+
     # ── Run Scan button ──────────────────────────────────────────
-    col_btn, col_info = st.columns([1, 3])
-    with col_btn:
-        _run_btn = st.button("🔍 Run Scan", type="primary", use_container_width=True,
-                             help="Fetch live data and score all 521 NSE 500 stocks")
-    with col_info:
+    _col_btn, _col_info = st.columns([1, 3])
+    with _col_btn:
+        _run_btn = st.button(
+            "🔍 Run Scan", type="primary", use_container_width=True,
+            help="Fetch live prices and score all 521 NSE 500 stocks",
+        )
+    with _col_info:
         if st.session_state.get('screener_results'):
             _first = st.session_state['screener_results'][0]
-            st.info(f"Last scan: {_first.get('scannedAt', '—')}  ·  {len(st.session_state['screener_results'])} stocks scored")
+            st.info(
+                f"Last scan: **{_first.get('scannedAt', '—')}**  ·  "
+                f"{len(st.session_state['screener_results'])} stocks scored"
+            )
         else:
-            st.info("No scan results yet — click **Run Scan** to analyse all NSE 500 stocks with live Yahoo Finance data.")
+            st.info(
+                "No scan results yet — click **Run Scan** to analyse all "
+                "NSE 500 stocks with live Yahoo Finance data."
+            )
 
     if _run_btn:
         _progress_bar  = st.progress(0, text="Starting scan…")
@@ -357,7 +423,7 @@ if st.session_state.get('page_mode') == 'positional_screener':
         st.rerun()
 
     # ── Render HTML panel with pre-injected data ─────────────────
-    _html_path = _Path(__file__).parent / "public" / "index.html"
+    _html_path    = _Path(__file__).parent / "public" / "index.html"
     _html_template = _html_path.read_text(encoding="utf-8")
 
     _results_data = st.session_state.get('screener_results', [])
